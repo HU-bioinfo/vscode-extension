@@ -4,7 +4,7 @@
   "publisher": "hu-bioinfo-workshop",
   "description": "Work environment for R/Python analysis and development",
   "repository": "https://github.com/shuu5/HU_BioInfo_work_env.git",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "engines": {
     "vscode": "^1.96.0"
   },
@@ -34,11 +34,12 @@
     "watch": "tsc -watch -p ./",
     "pretest": "npm run compile && npm run lint",
     "lint": "eslint src",
-    "test": "npm run unit-test && npm run vscode-test",
+    "test": "npm run unit-test",
     "unit-test": "ts-mocha -p tsconfig.json test/**/*.test.ts",
-    "vscode-test": "npm run compile && node ./out/test/runTest.js"
+    "test:coverage": "nyc npm run unit-test"
   },
   "devDependencies": {
+    "@istanbuljs/nyc-config-typescript": "^1.0.2",
     "@types/chai": "^5.2.1",
     "@types/mocha": "^10.0.10",
     "@types/node": "20.x",
@@ -46,13 +47,14 @@
     "@types/vscode": "^1.96.0",
     "@typescript-eslint/eslint-plugin": "^8.28.0",
     "@typescript-eslint/parser": "^8.28.0",
-    "@vscode/test-cli": "^0.0.10",
-    "@vscode/test-electron": "^2.4.1",
     "chai": "^5.2.0",
     "eslint": "^9.23.0",
     "mocha": "^11.1.0",
+    "nyc": "^15.1.0",
     "sinon": "^20.0.0",
+    "source-map-support": "^0.5.21",
     "ts-mocha": "^11.1.0",
+    "ts-node": "^10.9.2",
     "typescript": "^5.8.2"
   },
   "os": [

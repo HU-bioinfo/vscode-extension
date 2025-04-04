@@ -1,0 +1,3 @@
+2025-04-04 15:36:57.189 [info] update#setState disabled
+2025-04-04 15:36:57.190 [info] update#ctor - updates are disabled by the environment
+2025-04-04 15:36:58.656 [info] Extension host with pid 15949 exited with code: 0, signal: unknown.

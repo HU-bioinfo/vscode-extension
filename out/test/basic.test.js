@@ -34,39 +34,10 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 const assert = __importStar(require("assert"));
-const sinon = __importStar(require("sinon"));
-const child_process = __importStar(require("child_process"));
 // 基本的なエラーハンドリングのテスト
 describe('Basic Error Handling Tests', function () {
     // テストタイムアウトを延長
     this.timeout(5000);
-    // スタブとスパイのセットアップ
-    let sandbox;
-    let execStub;
-    beforeEach(() => {
-        // サンドボックスの作成
-        sandbox = sinon.createSandbox();
-        // Node.js API のスタブ作成
-        execStub = sandbox.stub(child_process, 'exec');
-    });
-    afterEach(() => {
-        // サンドボックスのリストア
-        sandbox.restore();
-    });
-    it('Docker実行時のエラーハンドリングをテストする', () => {
-        // execがエラーを返す場合
-        execStub.callsFake((command, callback) => {
-            if (command.includes('docker')) {
-                callback(new Error('command not found: docker'), '', '');
-            }
-            return {};
-        });
-        // Dockerコマンドを実行し、エラーが適切に処理されることを確認
-        execStub('docker --version', (error, stdout, stderr) => {
-            assert.ok(error);
-            assert.ok(error.message.includes('command not found: docker'));
-        });
-    });
     it('エラーの有無で条件分岐する処理をテストする', () => {
         // エラーの有無で処理を分ける関数を定義
         function handleDockerInstall(error) {
@@ -83,6 +54,24 @@ describe('Basic Error Handling Tests', function () {
         // エラーがない場合の結果
         const successResult = handleDockerInstall(null);
         assert.strictEqual(successResult, 'Dockerはインストールされています');
+    });
+    it('エラーメッセージをパースして適切に処理する', () => {
+        // エラーメッセージを解析する関数
+        function parseDockerError(errorMessage) {
+            if (errorMessage.includes('permission denied')) {
+                return '権限エラー';
+            }
+            else if (errorMessage.includes('not found')) {
+                return 'インストールエラー';
+            }
+            else {
+                return '不明なエラー';
+            }
+        }
+        // 異なるエラーメッセージのテスト
+        assert.strictEqual(parseDockerError('permission denied'), '権限エラー');
+        assert.strictEqual(parseDockerError('command not found'), 'インストールエラー');
+        assert.strictEqual(parseDockerError('unexpected error'), '不明なエラー');
     });
 });
 //# sourceMappingURL=basic.test.js.map

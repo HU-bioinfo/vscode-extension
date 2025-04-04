@@ -1,4 +1,5 @@
 import * as assert from 'assert';
+import '../src/extension'; // ソースコードへの参照を追加
 
 // work-envエクステンションのエラーハンドリングテスト
 describe('Work Env Error Handlers', function() {

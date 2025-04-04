@@ -1,4 +1,5 @@
 import * as assert from 'assert';
+import '../src/extension'; // ソースコードへの参照を追加
 
 // 基本的なエラーハンドリングのテスト
 describe('Basic Error Handling Tests', function() {

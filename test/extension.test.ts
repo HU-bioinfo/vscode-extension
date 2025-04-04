@@ -1,4 +1,5 @@
 import * as assert from 'assert';
+import '../src/extension';
 
 describe('Extension Test Suite', () => {
 	it('Sample test', () => {

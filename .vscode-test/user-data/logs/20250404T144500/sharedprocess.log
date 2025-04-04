@@ -1,0 +1,8 @@
+2025-04-04 14:45:02.412 [error] Error: ENOENT: no such file or directory, access '/tmp/user/1000/wayland-0'
+    at async Object.access (node:internal/original-fs/promises:608:10)
+    at async v8 (file:///home/vscode/project/extensions_src/work-env/.vscode-test/vscode-linux-x64-1.99.0/resources/app/out/vs/code/electron-utility/sharedProcess/sharedProcessMain.js:116:9389)
+    at async Promise.all (index 1)
+    at async K8.n (file:///home/vscode/project/extensions_src/work-env/.vscode-test/vscode-linux-x64-1.99.0/resources/app/out/vs/code/electron-utility/sharedProcess/sharedProcessMain.js:116:39067)
+2025-04-04 14:45:02.445 [info] Started initializing default profile extensions in extensions installation folder. file:///home/vscode/project/extensions_src/work-env/.vscode-test/extensions
+2025-04-04 14:45:02.528 [warning] Failed to create default profile extensions manifest in extensions installation folder. file:///home/vscode/project/extensions_src/work-env/.vscode-test/extensions Unable to create file 'vscode-userdata:/home/vscode/project/extensions_src/work-env/.vscode-test/extensions/extensions.json' that already exists when overwrite flag is not set
+2025-04-04 14:45:02.529 [info] Completed initializing default profile extensions in extensions installation folder. file:///home/vscode/project/extensions_src/work-env/.vscode-test/extensions
