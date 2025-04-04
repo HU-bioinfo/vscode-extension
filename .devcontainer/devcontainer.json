@@ -1,0 +1,25 @@
+{
+    "name": "dev container",
+    "dockerComposeFile": "./docker-compose.yml",
+    "service": "container",
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "ms-python.python",
+                "REditorsupport.r",
+                "github.copilot"
+            ],
+            "settings": {
+                "r.rterm.linux": "/usr/local/bin/R",
+                "r.rterm.option": [
+                  "--no-save",
+                  "--no-restore"
+                ],
+                "r.lsp.path": "/usr/local/bin/R",
+                "r.sessionWatcher": true,
+                "search.followSymlinks": false
+            }
+        }
+    },
+    "workspaceFolder": "/home/user/proj"
+}

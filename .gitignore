@@ -1,0 +1,11 @@
+gwd
+/container/singularity/sif/*
+/vscode-extension/work-env/.vscode/*
+/vscode-extension/work-env/out/*
+/vscode-extension/work-env/node_modules/*
+/wd
+
+
+*.sif
+*.env
+*.vsix
