@@ -4,6 +4,7 @@ gwd
 /vscode-extension/work-env/out/*
 /vscode-extension/work-env/node_modules/*
 /wd
+.vscode-test/vscode-linux-x64-*/code
 
 
 *.sif
