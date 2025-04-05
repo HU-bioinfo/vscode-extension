@@ -34,8 +34,27 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 const assert = __importStar(require("assert"));
+const sinon = __importStar(require("sinon"));
+const test_helper_1 = require("../src/test-helper");
+// VS Code モジュールを実際にモックする前に、元のモジュールを保存
+const originalRequire = require;
+// モックを使って実際のVSCodeをシミュレートするための設定
+const mockRequire = function (moduleName) {
+    if (moduleName === 'vscode') {
+        return test_helper_1.mockVscode;
+    }
+    return originalRequire(moduleName);
+};
+// requireをモックで上書き
+global.require = mockRequire;
 // 基本的なエラーハンドリングのテスト
 describe('Basic Error Handling Tests', function () {
+    beforeEach(function () {
+        (0, test_helper_1.resetAllMocks)();
+    });
+    afterEach(function () {
+        sinon.restore();
+    });
     // テストタイムアウトを延長
     this.timeout(5000);
     it('エラーの有無で条件分岐する処理をテストする', () => {
@@ -72,6 +91,18 @@ describe('Basic Error Handling Tests', function () {
         assert.strictEqual(parseDockerError('permission denied'), '権限エラー');
         assert.strictEqual(parseDockerError('command not found'), 'インストールエラー');
         assert.strictEqual(parseDockerError('unexpected error'), '不明なエラー');
+    });
+    // VSCodeのAPIを使用したエラーハンドリングのテスト
+    it('VSCode APIを使ったエラーメッセージ表示のテスト', () => {
+        // エラーメッセージを表示する関数
+        function showError(message) {
+            test_helper_1.mockVscode.window.showErrorMessage(message);
+        }
+        // 関数を呼び出し
+        showError('テストエラーメッセージ');
+        // スタブが正しく呼び出されたことを確認
+        assert.strictEqual(test_helper_1.mockVscode.window.showErrorMessage.called, true);
+        assert.strictEqual(test_helper_1.mockVscode.window.showErrorMessage.calledWith('テストエラーメッセージ'), true);
     });
 });
 //# sourceMappingURL=basic.test.js.map

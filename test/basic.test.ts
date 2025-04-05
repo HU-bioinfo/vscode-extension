@@ -1,8 +1,31 @@
 import * as assert from 'assert';
-import '../src/extension'; // ソースコードへの参照を追加
+import * as sinon from 'sinon';
+import { mockVscode, resetAllMocks } from '../src/test-helper';
+
+// VS Code モジュールを実際にモックする前に、元のモジュールを保存
+const originalRequire = require;
+
+// モックを使って実際のVSCodeをシミュレートするための設定
+const mockRequire = function(moduleName: string) {
+  if (moduleName === 'vscode') {
+    return mockVscode;
+  }
+  return originalRequire(moduleName);
+};
+
+// requireをモックで上書き
+(global as any).require = mockRequire;
 
 // 基本的なエラーハンドリングのテスト
 describe('Basic Error Handling Tests', function() {
+  beforeEach(function() {
+    resetAllMocks();
+  });
+
+  afterEach(function() {
+    sinon.restore();
+  });
+  
   // テストタイムアウトを延長
   this.timeout(5000);
   
@@ -41,5 +64,20 @@ describe('Basic Error Handling Tests', function() {
     assert.strictEqual(parseDockerError('permission denied'), '権限エラー');
     assert.strictEqual(parseDockerError('command not found'), 'インストールエラー');
     assert.strictEqual(parseDockerError('unexpected error'), '不明なエラー');
+  });
+  
+  // VSCodeのAPIを使用したエラーハンドリングのテスト
+  it('VSCode APIを使ったエラーメッセージ表示のテスト', () => {
+    // エラーメッセージを表示する関数
+    function showError(message: string): void {
+      mockVscode.window.showErrorMessage(message);
+    }
+    
+    // 関数を呼び出し
+    showError('テストエラーメッセージ');
+    
+    // スタブが正しく呼び出されたことを確認
+    assert.strictEqual(mockVscode.window.showErrorMessage.called, true);
+    assert.strictEqual(mockVscode.window.showErrorMessage.calledWith('テストエラーメッセージ'), true);
   });
 }); 

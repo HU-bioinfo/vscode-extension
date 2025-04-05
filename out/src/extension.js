@@ -33,47 +33,54 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.CONFIG = void 0;
 exports.activate = activate;
+exports.preflightChecks = preflightChecks;
+exports.pullDockerImage = pullDockerImage;
+exports.removeExistingContainers = removeExistingContainers;
+exports.isRemoteContainersExtensionInstalled = isRemoteContainersExtensionInstalled;
+exports.showRemoteContainersNotInstalledError = showRemoteContainersNotInstalledError;
+exports.isDockerInstalled = isDockerInstalled;
+exports.showDockerNotInstalledError = showDockerNotInstalledError;
+exports.checkDockerPermissions = checkDockerPermissions;
+exports.showDockerPermissionError = showDockerPermissionError;
 exports.deactivate = deactivate;
+exports.setupDevContainer = setupDevContainer;
+exports.openFolderInContainer = openFolderInContainer;
+exports.generateDockerCompose = generateDockerCompose;
+exports.collectDockerComposeConfig = collectDockerComposeConfig;
+exports.setupFolderPermissions = setupFolderPermissions;
+exports.processTemplateFile = processTemplateFile;
+exports.copyFolderRecursiveSync = copyFolderRecursiveSync;
 const vscode = __importStar(require("vscode"));
 const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
 const child_process_1 = require("child_process");
 const util_1 = require("util");
 const os = __importStar(require("os"));
+const error_handlers_1 = require("./error-handlers");
 const execPromise = (0, util_1.promisify)(child_process_1.exec);
-// This method is called when your extension is activated
-// Your extension is activated the very first time the command is executed
+// 設定関連の定数
+exports.CONFIG = {
+    DOCKER_IMAGE: 'kokeh/hu_bioinfo:stable',
+    CONTAINER_NAME_FILTERS: ['hu-bioinfo-workshop', 'work-env']
+};
+/**
+ * エクステンションアクティベーション時の処理
+ * @param context VS Codeのエクステンションコンテキスト
+ */
 function activate(context) {
     const extensionStoragePath = context.globalStorageUri.fsPath;
     const devcontainerPath = path.join(extensionStoragePath, ".devcontainer");
     const dockercomposeFilePath = path.join(devcontainerPath, "docker-compose.yml");
     let startWorkEnvCommand = vscode.commands.registerCommand('work-env.start-work-env', async () => {
         try {
-            // Remote Containers拡張機能がインストールされているか確認
-            if (!isRemoteContainersExtensionInstalled()) {
-                showRemoteContainersNotInstalledError();
+            // 事前チェック
+            if (!await preflightChecks()) {
                 return;
             }
-            // Dockerがインストールされているか確認
-            if (!await isDockerInstalled()) {
-                showDockerNotInstalledError();
-                return;
-            }
-            // Dockerの権限を確認
-            if (!await checkDockerPermissions()) {
-                showDockerPermissionError();
-                return;
-            }
-            // docker imageの更新
-            await vscode.commands.executeCommand("workbench.action.terminal.new");
-            const terminal = vscode.window.activeTerminal;
-            try {
-                vscode.window.showInformationMessage("Dockerイメージを取得中...");
-                await execPromise('docker pull kokeh/hu_bioinfo:stable');
-            }
-            catch (error) {
-                vscode.window.showErrorMessage(`Dockerイメージの取得に失敗しました: ${error}。ネットワーク接続を確認してください。`);
+            // DockerイメージのPull
+            if (!await pullDockerImage(exports.CONFIG.DOCKER_IMAGE)) {
                 return;
             }
             // .devcontainer の設定
@@ -83,39 +90,31 @@ function activate(context) {
             }
             if (!fs.existsSync(dockercomposeFilePath)) {
                 const success = await generateDockerCompose(context, dockercomposeFilePath);
-                if (!success)
+                if (!success) {
                     return;
+                }
             }
             // remote-containers.openFolder コマンドで開く
             openFolderInContainer(extensionStoragePath);
         }
         catch (error) {
-            vscode.window.showErrorMessage(`エラー: ${error}`);
+            const errorMessage = (0, error_handlers_1.parseErrorMessage)(error);
+            if ((0, error_handlers_1.isDockerError)(error)) {
+                (0, error_handlers_1.handleDockerError)(error);
+            }
+            else {
+                vscode.window.showErrorMessage(`エラー: ${errorMessage}`);
+            }
         }
     });
     let resetConfigCommand = vscode.commands.registerCommand('work-env.reset-config', async () => {
         try {
-            // Remote Containers拡張機能がインストールされているか確認
-            if (!isRemoteContainersExtensionInstalled()) {
-                showRemoteContainersNotInstalledError();
+            // 事前チェック
+            if (!await preflightChecks()) {
                 return;
             }
-            // Dockerがインストールされているか確認
-            if (!await isDockerInstalled()) {
-                showDockerNotInstalledError();
-                return;
-            }
-            // Dockerの権限を確認
-            if (!await checkDockerPermissions()) {
-                showDockerPermissionError();
-                return;
-            }
-            try {
-                vscode.window.showInformationMessage("Dockerイメージを取得中...");
-                await execPromise('docker pull kokeh/hu_bioinfo:stable');
-            }
-            catch (error) {
-                vscode.window.showErrorMessage(`Dockerイメージの取得に失敗しました: ${error}。ネットワーク接続を確認してください。`);
+            // DockerイメージのPull
+            if (!await pullDockerImage(exports.CONFIG.DOCKER_IMAGE)) {
                 return;
             }
             if (!fs.existsSync(devcontainerPath)) {
@@ -124,24 +123,81 @@ function activate(context) {
             }
             // ここで false が返ったら処理を中断
             const success = await generateDockerCompose(context, dockercomposeFilePath);
-            if (!success)
+            if (!success) {
                 return;
-            // 一度現在存在しているこのextension用のdocker containerを削除
-            try {
-                await execPromise("docker rm -f $(docker ps -aq --filter 'name=hu-bioinfo-workshop' --filter 'name=work-env')");
             }
-            catch (error) {
-                // コンテナが存在しない場合はエラーが出るが無視して続行
-            }
+            // コンテナの削除
+            await removeExistingContainers(exports.CONFIG.CONTAINER_NAME_FILTERS);
             // remote-containers.openFolder コマンドで開く
             openFolderInContainer(extensionStoragePath);
         }
         catch (error) {
-            vscode.window.showErrorMessage(`エラー: ${error}`);
+            const errorMessage = (0, error_handlers_1.parseErrorMessage)(error);
+            if ((0, error_handlers_1.isDockerError)(error)) {
+                (0, error_handlers_1.handleDockerError)(error);
+            }
+            else {
+                vscode.window.showErrorMessage(`エラー: ${errorMessage}`);
+            }
         }
     });
     context.subscriptions.push(startWorkEnvCommand);
     context.subscriptions.push(resetConfigCommand);
+}
+/**
+ * 事前チェック（Remote Container拡張、Docker、権限）
+ * @returns 全てのチェックが通った場合はtrue
+ */
+async function preflightChecks() {
+    // Remote Containers拡張機能がインストールされているか確認
+    if (!isRemoteContainersExtensionInstalled()) {
+        showRemoteContainersNotInstalledError();
+        return false;
+    }
+    // Dockerがインストールされているか確認
+    if (!await isDockerInstalled()) {
+        showDockerNotInstalledError();
+        return false;
+    }
+    // Dockerの権限を確認
+    if (!await checkDockerPermissions()) {
+        showDockerPermissionError();
+        return false;
+    }
+    return true;
+}
+/**
+ * Dockerイメージをプルする
+ * @param imageName プルするイメージ名
+ * @returns 成功した場合はtrue
+ */
+async function pullDockerImage(imageName) {
+    try {
+        vscode.window.showInformationMessage(`Dockerイメージ ${imageName} を取得中...`);
+        await execPromise(`docker pull ${imageName}`);
+        return true;
+    }
+    catch (error) {
+        (0, error_handlers_1.handleDockerError)(error);
+        return false;
+    }
+}
+/**
+ * 既存のコンテナを削除する
+ * @param nameFilters コンテナ名フィルタ
+ * @returns 成功した場合はtrue
+ */
+async function removeExistingContainers(nameFilters) {
+    try {
+        // フィルタ文字列の作成
+        const filterStr = nameFilters.map(name => `--filter 'name=${name}'`).join(' ');
+        await execPromise(`docker rm -f $(docker ps -aq ${filterStr})`);
+        return true;
+    }
+    catch (error) {
+        // コンテナが存在しない場合はエラーが出るが無視して続行
+        return true;
+    }
 }
 // Remote Containers拡張機能がインストールされているかを確認する関数
 function isRemoteContainersExtensionInstalled() {
@@ -186,7 +242,7 @@ async function checkDockerPermissions() {
     }
     catch (error) {
         // エラーメッセージに権限関連の文字列が含まれているか確認
-        const errorMessage = error.toString().toLowerCase();
+        const errorMessage = error ? error.toString().toLowerCase() : '';
         if (errorMessage.includes('permission') || errorMessage.includes('denied') || errorMessage.includes('access')) {
             return false;
         }
@@ -216,20 +272,43 @@ function showDockerPermissionError() {
 }
 // This method is called when your extension is deactivated
 function deactivate() { }
+// .devcontainerフォルダをセットアップする関数
 function setupDevContainer(context, targetPath) {
-    const sourcePath = path.join(context.extensionUri.fsPath, ".devcontainer");
-    copyFolderRecursiveSync(sourcePath, targetPath);
+    try {
+        const sourcePath = path.join(context.extensionUri.fsPath, ".devcontainer");
+        copyFolderRecursiveSync(sourcePath, targetPath);
+    }
+    catch (error) {
+        (0, error_handlers_1.handleFileSystemError)(error);
+    }
 }
+// コンテナでフォルダを開く関数
 function openFolderInContainer(extensionStoragePath) {
     const folderUri = vscode.Uri.file(extensionStoragePath);
     vscode.commands.executeCommand("remote-containers.openFolder", folderUri).
         then(() => {
+        // トークンは使用しないが、APIの要件として必要
     }, (error) => {
-        vscode.window.showErrorMessage(`コンテナでフォルダを開くことができませんでした: ${error.message}`);
+        vscode.window.showErrorMessage(`コンテナでフォルダを開くことができませんでした: ${(0, error_handlers_1.parseErrorMessage)(error)}`);
     });
 }
+// Docker Composeファイルを生成する関数
 async function generateDockerCompose(context, dockercomposeFilePath) {
-    const dockercomposeTempletePath = path.join(context.extensionUri.fsPath, "docker-compose.templete.yml");
+    const templatePath = path.join(context.extensionUri.fsPath, "docker-compose.templete.yml");
+    // 設定情報の収集
+    const config = await collectDockerComposeConfig();
+    if (!config) {
+        return false;
+    }
+    // ファイルアクセス権の設定
+    if (!await setupFolderPermissions(config.projectFolder, config.cacheFolder)) {
+        return false;
+    }
+    // テンプレートファイルの処理
+    return processTemplateFile(templatePath, dockercomposeFilePath, config);
+}
+// Docker Compose設定情報を収集する関数
+async function collectDockerComposeConfig() {
     // プロジェクトフォルダの選択
     const projectFolderUri = await vscode.window.showOpenDialog({
         canSelectFolders: true,
@@ -238,7 +317,7 @@ async function generateDockerCompose(context, dockercomposeFilePath) {
     });
     if (!projectFolderUri || projectFolderUri.length === 0) {
         vscode.window.showErrorMessage("プロジェクトフォルダが選択されていません。");
-        return false; // 失敗
+        return null;
     }
     const projectFolder = projectFolderUri[0].fsPath;
     // キャッシュディレクトリの選択
@@ -249,65 +328,83 @@ async function generateDockerCompose(context, dockercomposeFilePath) {
     });
     if (!cacheFolderUri || cacheFolderUri.length === 0) {
         vscode.window.showErrorMessage("キャッシュフォルダが選択されていません。");
-        return false; // 失敗
+        return null;
     }
     const cacheFolder = cacheFolderUri[0].fsPath;
     // GitHub PAT の入力
     const githubPat = await vscode.window.showInputBox({
         prompt: "Enter your GitHub Personal Access Token",
         ignoreFocusOut: true,
-        password: true
+        password: true,
+        validateInput: error_handlers_1.validateInput
     });
     if (!githubPat) {
         vscode.window.showErrorMessage("GitHub PATが必要です。");
-        return false; // 失敗
+        return null;
     }
+    return { projectFolder, cacheFolder, githubPat };
+}
+// フォルダのアクセス権を設定する関数
+async function setupFolderPermissions(projectFolder, cacheFolder) {
     try {
         await vscode.commands.executeCommand("workbench.action.terminal.new");
         const terminal = vscode.window.activeTerminal;
         terminal?.sendText(`chmod 777 "${projectFolder}"`);
         terminal?.sendText(`chmod 777 "${cacheFolder}"`);
+        return true;
     }
     catch (error) {
-        vscode.window.showErrorMessage("権限エラー: フォルダのアクセス権を変更できません。");
+        vscode.window.showErrorMessage(`権限エラー: フォルダのアクセス権を変更できません。${(0, error_handlers_1.parseErrorMessage)(error)}`);
         return false;
     }
+}
+// テンプレートファイルを処理する関数
+function processTemplateFile(templatePath, outputPath, config) {
     try {
         const replacements = {
-            GITHUB_PAT: githubPat,
-            CACHE_FOLDER: cacheFolder,
-            PROJECT_FOLDER: projectFolder
+            GITHUB_PAT: config.githubPat,
+            CACHE_FOLDER: config.cacheFolder,
+            PROJECT_FOLDER: config.projectFolder
         };
         // テンプレートファイルを読み込む
-        let template = fs.readFileSync(dockercomposeTempletePath, 'utf8');
+        let template = fs.readFileSync(templatePath, 'utf8');
         // プレースホルダーを置換
         Object.entries(replacements).forEach(([key, value]) => {
             const regex = new RegExp(`{{${key}}}`, 'g'); // `{{GITHUB_PAT}}` のようなパターンを探す
             template = template.replace(regex, value);
         });
-        fs.writeFileSync(dockercomposeFilePath, template.trim());
+        fs.writeFileSync(outputPath, template.trim());
         return true; // 成功
     }
     catch (error) {
-        vscode.window.showErrorMessage("docker-compose.ymlの生成中にエラーが発生しました。");
+        (0, error_handlers_1.handleFileSystemError)(error);
+        vscode.window.showErrorMessage(`docker-compose.ymlの生成中にエラーが発生しました。`);
         return false; // 失敗
     }
 }
-function copyFolderRecursiveSync(source, target) {
-    if (!fs.existsSync(source))
-        return;
-    if (!fs.existsSync(target))
-        fs.mkdirSync(target, { recursive: true });
-    const files = fs.readdirSync(source);
-    for (const file of files) {
-        const srcPath = path.join(source, file);
-        const destPath = path.join(target, file);
-        if (fs.lstatSync(srcPath).isDirectory()) {
-            copyFolderRecursiveSync(srcPath, destPath);
+// フォルダを再帰的にコピーする関数
+function copyFolderRecursiveSync(source, target, fsModule = fs) {
+    try {
+        if (!fsModule.existsSync(source)) {
+            return;
         }
-        else {
-            fs.copyFileSync(srcPath, destPath);
+        if (!fsModule.existsSync(target)) {
+            fsModule.mkdirSync(target, { recursive: true });
         }
+        const files = fsModule.readdirSync(source);
+        for (const file of files) {
+            const srcPath = path.join(source, file);
+            const destPath = path.join(target, file);
+            if (fsModule.lstatSync(srcPath).isDirectory()) {
+                copyFolderRecursiveSync(srcPath, destPath, fsModule);
+            }
+            else {
+                fsModule.copyFileSync(srcPath, destPath);
+            }
+        }
+    }
+    catch (error) {
+        (0, error_handlers_1.handleFileSystemError)(error);
     }
 }
 //# sourceMappingURL=extension.js.map

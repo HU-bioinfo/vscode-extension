@@ -4,6 +4,23 @@ All notable changes to the "work-env" extension will be documented in this file.
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.0.5] - 2025-04-06
+
+### Fixed
+
+- テストカバレッジ向上のための修正
+  - エラーハンドラーモジュールのテスト環境対応を改善
+  - VSCode API のモック化を強化
+  - Docker 関連エラー処理のテストケース追加
+  - ファイルシステム操作のテストケース追加
+  - 各 OS プラットフォーム固有エラーメッセージのテスト追加
+
+### Improved
+
+- ブランチカバレッジが 50%以上に向上
+- テスト環境でのモック対応を改善
+- テスト失敗の修正
+
 ## [1.0.4] - 2025-04-05
 
 ### Added

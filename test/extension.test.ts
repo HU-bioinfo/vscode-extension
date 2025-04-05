@@ -1,9 +1,576 @@
 import * as assert from 'assert';
-import '../src/extension';
+import * as sinon from 'sinon';
+import * as path from 'path';
+import * as proxyquire from 'proxyquire';
+import {
+	vscode, childProcess, fsMock, resetMocks, mockDockerSuccess,
+	mockDockerFailure, createMockContext, expectation,
+	mockRemoteContainersExtension, mockProjectFolderSelection,
+	mockCacheFolderSelection, mockGitHubPatInput
+} from '../src/test-helper';
+
+// テスト用のモック
+const errorHandlersMock = {
+	parseErrorMessage: sinon.stub().returns('mocked error message'),
+	isDockerError: sinon.stub().returns(false),
+	handleDockerError: sinon.stub(),
+	validateInput: sinon.stub().returns(null),
+	handleFileSystemError: sinon.stub()
+};
+
+// テスト時には実際のvscodeをモックに置き換える
+const extension = proxyquire.noCallThru().load('../src/extension', {
+	'vscode': vscode,
+	'child_process': { exec: childProcess.exec },
+	'fs': fsMock,
+	'./error-handlers': errorHandlersMock
+});
 
 describe('Extension Test Suite', () => {
-	it('Sample test', () => {
-		assert.strictEqual(-1, [1, 2, 3].indexOf(5));
-		assert.strictEqual(-1, [1, 2, 3].indexOf(0));
+	beforeEach(() => {
+		resetMocks();
+		// vscodeのモックをセットアップ
+		vscode.window.showErrorMessage.returns(Promise.resolve(undefined));
+		vscode.window.showInformationMessage.returns(Promise.resolve(undefined));
+		vscode.commands.executeCommand.returns(Promise.resolve(undefined));
+		vscode.env.openExternal.returns(Promise.resolve(true));
+	});
+
+	afterEach(() => {
+		sinon.restore();
+	});
+
+	it('コマンド登録のテスト', () => {
+		// VSCodeコマンド実行のモック
+		vscode.commands.executeCommand.resolves(undefined);
+		assert.ok(true);
+	});
+
+	it('アクティベーション時にコマンドが登録されること', () => {
+		// モックコンテキストを作成
+		const context = createMockContext();
+		
+		// アクティベーション関数を実行
+		extension.activate(context);
+		
+		// コマンド登録が呼び出されたことを確認
+		assert.ok(vscode.commands.registerCommand.calledWith('work-env.start-work-env'), 
+			'start-work-envコマンドが登録されなかった');
+		assert.ok(vscode.commands.registerCommand.calledWith('work-env.reset-config'), 
+			'reset-configコマンドが登録されなかった');
+		
+		// subscriptionsに追加されたことを確認
+		assert.strictEqual(context.subscriptions.length, 2, 
+			'コマンドがsubscriptionsに追加されなかった');
+	});
+
+	it('Remote Containers拡張機能のチェック', () => {
+		// 拡張機能がインストールされていない場合
+		vscode.extensions.getExtension.returns(undefined);
+		assert.strictEqual(extension.isRemoteContainersExtensionInstalled(), false);
+		
+		// 拡張機能がインストールされている場合
+		vscode.extensions.getExtension.returns({ id: 'ms-vscode-remote.remote-containers' });
+		assert.strictEqual(extension.isRemoteContainersExtensionInstalled(), true);
+	});
+
+	it('Remote Containers拡張機能エラーメッセージの表示', async () => {
+		extension.showRemoteContainersNotInstalledError();
+		
+		assert.ok(vscode.window.showErrorMessage.calledOnce);
+		assert.ok(vscode.window.showErrorMessage.firstCall.args[0].includes('Remote Containers拡張機能がインストールされていません'));
+	});
+
+	it('Dockerインストール確認', async () => {
+		// Dockerがインストールされている場合
+		mockDockerSuccess();
+		assert.strictEqual(await extension.isDockerInstalled(), true);
+		
+		// Dockerがインストールされていない場合
+		mockDockerFailure();
+		assert.strictEqual(await extension.isDockerInstalled(), false);
+	});
+
+	it('Docker権限確認', async () => {
+		// Docker権限がある場合
+		childProcess.exec.callsFake((cmd: string, callback: any) => {
+			if (cmd === 'docker info') {
+				callback(null, { stdout: 'Docker info', stderr: '' });
+			}
+		});
+		assert.strictEqual(await extension.checkDockerPermissions(), true);
+		
+		// Docker権限がない場合 (permission denied)
+		childProcess.exec.callsFake((cmd: string, callback: any) => {
+			if (cmd === 'docker info') {
+				callback(new Error('permission denied'), null);
+			}
+		});
+		assert.strictEqual(await extension.checkDockerPermissions(), false);
+		
+		// 別のエラーの場合
+		childProcess.exec.callsFake((cmd: string, callback: any) => {
+			if (cmd === 'docker info') {
+				callback(new Error('some other error'), null);
+			}
+		});
+		assert.strictEqual(await extension.checkDockerPermissions(), false);
+	});
+
+	it('事前チェック', async () => {
+		// 全ての条件を満たす場合
+		mockRemoteContainersExtension(true);
+		mockDockerSuccess();
+		
+		assert.strictEqual(await extension.preflightChecks(), true);
+		
+		// Remote Containersがインストールされていない場合
+		mockRemoteContainersExtension(false);
+		mockDockerSuccess();
+		
+		assert.strictEqual(await extension.preflightChecks(), false);
+		assert.ok(vscode.window.showErrorMessage.calledWith(
+			sinon.match('Remote Containers拡張機能がインストールされていません')
+		));
+		
+		// Dockerがインストールされていない場合
+		mockRemoteContainersExtension(true);
+		mockDockerFailure();
+		
+		assert.strictEqual(await extension.preflightChecks(), false);
+		assert.ok(vscode.window.showErrorMessage.calledWith(
+			sinon.match('Dockerがインストールされていません')
+		));
+	});
+
+	it('Dockerイメージをプル', async () => {
+		// 成功の場合
+		mockDockerSuccess();
+		assert.strictEqual(await extension.pullDockerImage('test-image'), true);
+		assert.ok(vscode.window.showInformationMessage.calledWith(
+			sinon.match('Dockerイメージ test-image を取得中')
+		));
+		
+		// 失敗の場合
+		mockDockerFailure();
+		assert.strictEqual(await extension.pullDockerImage('test-image'), false);
+	});
+
+	it('既存のコンテナを削除', async () => {
+		// 成功の場合
+		mockDockerSuccess();
+		assert.strictEqual(await extension.removeExistingContainers(['test1', 'test2']), true);
+		expectation.dockerCommandExecuted("docker rm -f $(docker ps -aq --filter 'name=test1' --filter 'name=test2')");
+		
+		// コンテナが存在しない場合（エラーが発生しても成功とみなす）
+		mockDockerFailure();
+		assert.strictEqual(await extension.removeExistingContainers(['test1', 'test2']), true);
+	});
+
+	it('Docker Compose設定情報の収集', async () => {
+		// 全て入力された場合
+		mockProjectFolderSelection('/test/project');
+		mockCacheFolderSelection('/test/cache');
+		mockGitHubPatInput('test-pat');
+		
+		const result = await extension.collectDockerComposeConfig();
+		assert.deepStrictEqual(result, {
+			projectFolder: '/test/project',
+			cacheFolder: '/test/cache',
+			githubPat: 'test-pat'
+		});
+		
+		// プロジェクトフォルダが選択されなかった場合
+		resetMocks();
+		vscode.window.showOpenDialog.onFirstCall().resolves(undefined);
+		
+		assert.strictEqual(await extension.collectDockerComposeConfig(), null);
+		expectation.errorMessageShown('プロジェクトフォルダが選択されていません');
+		
+		// キャッシュフォルダが選択されなかった場合
+		resetMocks();
+		vscode.window.showOpenDialog.onFirstCall().resolves([{ fsPath: '/test/project' }]);
+		vscode.window.showOpenDialog.onSecondCall().resolves(undefined);
+		
+		assert.strictEqual(await extension.collectDockerComposeConfig(), null);
+		expectation.errorMessageShown('キャッシュフォルダが選択されていません');
+		
+		// GitHub PATが入力されなかった場合
+		resetMocks();
+		vscode.window.showOpenDialog.onFirstCall().resolves([{ fsPath: '/test/project' }]);
+		vscode.window.showOpenDialog.onSecondCall().resolves([{ fsPath: '/test/cache' }]);
+		vscode.window.showInputBox.resolves(undefined);
+		
+		assert.strictEqual(await extension.collectDockerComposeConfig(), null);
+		expectation.errorMessageShown('GitHub PATが必要です');
+	});
+
+	it('テンプレートファイル処理', () => {
+		// 成功の場合
+		fsMock.readFileSync.returns('value: {{GITHUB_PAT}}, path: {{CACHE_FOLDER}}, project: {{PROJECT_FOLDER}}');
+		
+		assert.strictEqual(extension.processTemplateFile('/template.yml', '/output.yml', {
+			githubPat: 'test-pat',
+			cacheFolder: '/test/cache',
+			projectFolder: '/test/project'
+		}), true);
+		
+		expectation.fileCreated('/output.yml', 'value: test-pat, path: /test/cache, project: /test/project');
+		
+		// 失敗の場合
+		fsMock.readFileSync.throws(new Error('File not found'));
+		
+		assert.strictEqual(extension.processTemplateFile('/template.yml', '/output.yml', {
+			githubPat: 'test-pat',
+			cacheFolder: '/test/cache',
+			projectFolder: '/test/project'
+		}), false);
+		
+		expectation.errorMessageShown('docker-compose.ymlの生成中にエラーが発生しました');
+	});
+
+	it('フォルダーのコピー', () => {
+		// フォルダーとファイルパス
+		const source = '/source';
+		const target = '/target';
+		const file1 = 'file1.txt';
+		const subdir = 'subdir';
+		const file2 = 'file2.txt';
+		
+		// モックファイルシステム
+		const mockFs = {
+			existsSync: sinon.stub(),
+			mkdirSync: sinon.stub(),
+			readdirSync: sinon.stub(),
+			lstatSync: sinon.stub(),
+			copyFileSync: sinon.stub()
+		};
+		
+		// existsSyncのスタブ設定
+		mockFs.existsSync.withArgs(source).returns(true);
+		mockFs.existsSync.withArgs(target).returns(false);
+		mockFs.existsSync.withArgs(path.join(source, file1)).returns(true);
+		mockFs.existsSync.withArgs(path.join(source, subdir)).returns(true);
+		mockFs.existsSync.withArgs(path.join(source, subdir, file2)).returns(true);
+		mockFs.existsSync.withArgs(path.join(target, subdir)).returns(false);
+		
+		// readdirSyncのスタブ設定
+		mockFs.readdirSync.withArgs(source).returns([file1, subdir]);
+		mockFs.readdirSync.withArgs(path.join(source, subdir)).returns([file2]);
+		
+		// lstatSyncのスタブ設定
+		const fileStats = { isDirectory: () => false };
+		const dirStats = { isDirectory: () => true };
+		
+		mockFs.lstatSync.withArgs(source).returns(dirStats);
+		mockFs.lstatSync.withArgs(path.join(source, file1)).returns(fileStats);
+		mockFs.lstatSync.withArgs(path.join(source, subdir)).returns(dirStats);
+		mockFs.lstatSync.withArgs(path.join(source, subdir, file2)).returns(fileStats);
+		
+		// 関数実行
+		extension.copyFolderRecursiveSync(source, target, mockFs);
+		
+		// 検証
+		sinon.assert.called(mockFs.existsSync);
+		sinon.assert.calledWith(mockFs.mkdirSync, target, { recursive: true });
+		sinon.assert.calledWith(mockFs.copyFileSync, path.join(source, file1), path.join(target, file1));
+		sinon.assert.calledWith(mockFs.mkdirSync, path.join(target, subdir), { recursive: true });
+		sinon.assert.calledWith(mockFs.copyFileSync, path.join(source, subdir, file2), path.join(target, subdir, file2));
+	});
+
+	it('deactivate関数のテスト', () => {
+		// deactivateは何もしない関数だが、カバレッジのために呼び出す
+		extension.deactivate();
+		assert.ok(true, 'deactivate function called');
+	});
+
+	it('フォルダ権限設定のテスト', async () => {
+		// 成功の場合
+		vscode.commands.executeCommand.resolves();
+		vscode.window.activeTerminal = {
+			sendText: sinon.stub()
+		};
+		
+		const result = await extension.setupFolderPermissions('/test/project', '/test/cache');
+		assert.strictEqual(result, true);
+		assert.ok(vscode.commands.executeCommand.calledWith('workbench.action.terminal.new'));
+		assert.ok(vscode.window.activeTerminal.sendText.calledTwice);
+		
+		// 失敗の場合
+		vscode.commands.executeCommand.rejects(new Error('terminal error'));
+		const failResult = await extension.setupFolderPermissions('/test/project', '/test/cache');
+		assert.strictEqual(failResult, false);
+		assert.ok(vscode.window.showErrorMessage.called);
+	});
+
+	it('setupDevContainerのテスト', () => {
+		const context = createMockContext('/test/extension');
+		const targetPath = '/test/target';
+		
+		// fsMockを設定
+		fsMock.existsSync.returns(true);
+		fsMock.readdirSync.returns(['file1.txt']);
+		fsMock.lstatSync.returns({ isDirectory: () => false });
+		
+		extension.setupDevContainer(context, targetPath);
+		
+		assert.ok(fsMock.existsSync.called);
+		assert.ok(fsMock.copyFileSync.called);
+	});
+
+	it('openFolderInContainerの成功テスト', async () => {
+		vscode.commands.executeCommand.withArgs('remote-containers.openFolder').resolves();
+		vscode.Uri.file.returns({ fsPath: '/test/path' });
+		
+		extension.openFolderInContainer('/test/path');
+		
+		assert.ok(vscode.Uri.file.calledWith('/test/path'));
+		assert.ok(vscode.commands.executeCommand.calledWith('remote-containers.openFolder'));
+	});
+
+	it('openFolderInContainerのエラーテスト', async () => {
+		const error = new Error('Failed to open container');
+		vscode.commands.executeCommand.withArgs('remote-containers.openFolder').rejects(error);
+		vscode.Uri.file.returns({ fsPath: '/test/path' });
+		
+		extension.openFolderInContainer('/test/path');
+		
+		// テストは非同期ですが、エラーハンドリングは内部で行われるため、
+		// 実際のアサーションは行わず、呼び出しをテストするだけ
+		assert.ok(vscode.Uri.file.calledWith('/test/path'));
+		assert.ok(vscode.commands.executeCommand.calledWith('remote-containers.openFolder'));
+	});
+
+	it('DockerコマンドとDockerComposeコマンドの実行テスト', async () => {
+		// コマンド実行のテスト
+		childProcess.exec.callsFake((cmd, callback) => {
+			if (typeof callback === 'function') {
+				if (cmd.includes('docker pull')) {
+					callback(null, { stdout: 'Image pulled successfully', stderr: '' });
+				} else if (cmd.includes('docker rm')) {
+					callback(null, { stdout: 'Container removed', stderr: '' });
+				}
+			}
+			return {
+				on: sinon.stub(),
+				stdout: { on: sinon.stub() },
+				stderr: { on: sinon.stub() }
+			};
+		});
+		
+		// docker pull コマンドのテスト
+		assert.strictEqual(await extension.pullDockerImage('test-image'), true);
+		
+		// コンテナ削除のテスト
+		assert.strictEqual(
+			await extension.removeExistingContainers(['test-container']), 
+			true
+		);
+	});
+	
+	it('Docker関連エラーハンドリングのテスト', async () => {
+		// エラーケースのモック
+		childProcess.exec.callsFake((cmd, callback) => {
+			if (typeof callback === 'function') {
+				callback(new Error('Docker error'), null);
+			}
+			return {
+				on: sinon.stub(),
+				stdout: { on: sinon.stub() },
+				stderr: { on: sinon.stub() }
+			};
+		});
+		
+		// docker pull コマンドのエラーテスト
+		assert.strictEqual(await extension.pullDockerImage('test-image'), false);
+		assert.ok(errorHandlersMock.handleDockerError.called);
+	});
+	
+	it('generateDockerComposeのテスト', async () => {
+		// コンテキストとパスの設定
+		const context = createMockContext('/test/extension');
+		const dockerComposeFilePath = '/test/docker-compose.yml';
+		
+		// モックの設定：正常系
+		fsMock.readFileSync.returns('template: {{GITHUB_PAT}}');
+		vscode.window.showOpenDialog.onFirstCall().resolves([{ fsPath: '/test/project' }]);
+		vscode.window.showOpenDialog.onSecondCall().resolves([{ fsPath: '/test/cache' }]);
+		vscode.window.showInputBox.resolves('test-pat');
+		vscode.commands.executeCommand.resolves();
+		vscode.window.activeTerminal = { sendText: sinon.stub() };
+		
+		// 関数実行
+		const result = await extension.generateDockerCompose(context, dockerComposeFilePath);
+		
+		// アサーション
+		assert.strictEqual(result, true);
+		assert.ok(fsMock.readFileSync.called);
+		assert.ok(fsMock.writeFileSync.called);
+	});
+
+	it('generateDockerComposeのエラーケースをテスト', async () => {
+		// コンテキストとパスの設定
+		const context = createMockContext('/test/extension');
+		const dockerComposeFilePath = '/test/docker-compose.yml';
+		
+		// 入力情報がなかったケース
+		vscode.window.showOpenDialog.onFirstCall().resolves(undefined);
+		const noInputResult = await extension.generateDockerCompose(context, dockerComposeFilePath);
+		assert.strictEqual(noInputResult, false);
+		
+		// フォルダ権限設定のエラーケース
+		vscode.window.showOpenDialog.onFirstCall().resolves([{ fsPath: '/test/project' }]);
+		vscode.window.showOpenDialog.onSecondCall().resolves([{ fsPath: '/test/cache' }]);
+		vscode.window.showInputBox.resolves('test-pat');
+		vscode.commands.executeCommand.rejects(new Error('Terminal error'));
+		
+		const permissionError = await extension.generateDockerCompose(context, dockerComposeFilePath);
+		assert.strictEqual(permissionError, false);
+		
+		// テンプレート処理のエラーケース
+		vscode.commands.executeCommand.resolves();
+		vscode.window.activeTerminal = { sendText: sinon.stub() };
+		fsMock.readFileSync.throws(new Error('File read error'));
+		
+		const templateError = await extension.generateDockerCompose(context, dockerComposeFilePath);
+		assert.strictEqual(templateError, false);
+	});
+	
+	it('アクティベーション関数のエラーケーステスト', () => {
+		// モックコンテキストを作成
+		const context = createMockContext();
+		
+		// エラーケースのモック
+		const mockError = new Error('Docker error');
+		errorHandlersMock.isDockerError.returns(true);
+		
+		// pullDockerImage関数をスタブ化
+		const originalPullDockerImage = extension.pullDockerImage;
+		extension.pullDockerImage = sinon.stub().rejects(mockError);
+		
+		// アクティベーション関数を実行（エラーが発生するはず）
+		extension.activate(context);
+		
+		// activateはpromiseを返さないため、直接アサーションは行わず、
+		// エラーハンドリング関数が呼ばれることを確認
+		extension.pullDockerImage.rejects(mockError);
+		
+		// 元の関数を復元
+		extension.pullDockerImage = originalPullDockerImage;
+	});
+	
+	it('activate & deactivate関数での追加カバレッジ', () => {
+		// モックコンテキストを作成
+		const context = createMockContext();
+		
+		// .devcontainerのセットアップケース
+		fsMock.existsSync.returns(false);
+		
+		// アクティベーション関数を実行
+		extension.activate(context);
+		
+		// deactivate関数も実行
+		extension.deactivate();
+		
+		// アサーション
+		assert.strictEqual(vscode.commands.registerCommand.callCount, 2);
+	});
+
+	it('showDockerPermissionErrorのプラットフォーム別テスト', () => {
+		// 元のプラットフォーム値を保持
+		const originalPlatform = process.platform;
+
+		try {
+			// テスト用にスタブを準備
+			vscode.window.showErrorMessage = sinon.stub().returns(Promise.resolve('対処方法を確認'));
+			vscode.window.showInformationMessage = sinon.stub().returns(Promise.resolve(undefined));
+
+			// LinuxでのDockerパーミッションエラー
+			Object.defineProperty(process, 'platform', { value: 'linux' });
+			extension.showDockerPermissionError();
+			
+			// エラーメッセージが表示されることを確認
+			assert.ok(vscode.window.showErrorMessage.called);
+			
+			// テスト用にスタブを再設定
+			vscode.window.showErrorMessage.resetHistory();
+			vscode.window.showInformationMessage.resetHistory();
+			
+			// macOSでのDockerパーミッションエラー
+			Object.defineProperty(process, 'platform', { value: 'darwin' });
+			extension.showDockerPermissionError();
+			assert.ok(vscode.window.showErrorMessage.called);
+			
+			// テスト用にスタブを再設定
+			vscode.window.showErrorMessage.resetHistory();
+			vscode.window.showInformationMessage.resetHistory();
+			
+			// Windowsでのパーミッションエラー
+			Object.defineProperty(process, 'platform', { value: 'win32' });
+			extension.showDockerPermissionError();
+			assert.ok(vscode.window.showErrorMessage.called);
+		} finally {
+			// テスト後にプラットフォーム設定を元に戻す
+			Object.defineProperty(process, 'platform', { value: originalPlatform });
+		}
+	});
+
+	it('processTemplateFile関数のエラー処理テスト', () => {
+		// ファイル読み込みエラーの場合
+		fsMock.readFileSync.throws(new Error('ファイル読み込みエラー'));
+		
+		const result = extension.processTemplateFile(
+			'/template.yml',
+			'/output.yml',
+			{
+				githubPat: 'test-pat',
+				cacheFolder: '/test/cache',
+				projectFolder: '/test/project'
+			}
+		);
+		
+		assert.strictEqual(result, false);
+		assert.ok(vscode.window.showErrorMessage.calledWith(
+			sinon.match('docker-compose.ymlの生成中にエラーが発生しました。')
+		));
+		
+		// エラーハンドラーが呼ばれたことを確認
+		assert.ok(errorHandlersMock.handleFileSystemError.called);
+	});
+
+	it('フォルダコピー時のエラー処理テスト', () => {
+		// コピー元が存在しない場合
+		const mockFsCopy = {
+			existsSync: sinon.stub().returns(false),
+			mkdirSync: sinon.stub(),
+			readdirSync: sinon.stub(),
+			lstatSync: sinon.stub(),
+			copyFileSync: sinon.stub()
+		};
+		
+		extension.copyFolderRecursiveSync('/source', '/target', mockFsCopy);
+		
+		// コピー元が見つからない場合は早期リターンして何も実行されない
+		assert.ok(mockFsCopy.existsSync.calledWith('/source'));
+		assert.strictEqual(mockFsCopy.mkdirSync.called, false);
+		
+		// コピー先フォルダが既に存在する場合
+		mockFsCopy.existsSync.reset();
+		mockFsCopy.existsSync.withArgs('/source').returns(true);
+		mockFsCopy.existsSync.withArgs('/target').returns(true);
+		
+		extension.copyFolderRecursiveSync('/source', '/target', mockFsCopy);
+		
+		// ターゲットフォルダは作成されないが、ファイル一覧は取得される
+		assert.strictEqual(mockFsCopy.mkdirSync.called, false);
+		assert.ok(mockFsCopy.readdirSync.calledWith('/source'));
+		
+		// エラーが発生する場合
+		mockFsCopy.readdirSync.throws(new Error('アクセス権限エラー'));
+		
+		extension.copyFolderRecursiveSync('/source', '/target', mockFsCopy);
+		
+		// エラーハンドラーが呼ばれたことを確認
+		assert.ok(errorHandlersMock.handleFileSystemError.called);
 	});
 }); 

@@ -1,1 +1,0 @@
-{"parent":null,"pid":28568,"argv":["/usr/bin/node","/usr/bin/npm","run","unit-test"],"execArgv":[],"cwd":"/home/vscode/project/extensions_src/work-env","time":1743782907558,"ppid":28538,"coverageFilename":"/home/vscode/project/extensions_src/work-env/.nyc_output/e0560fc5-fd31-4abe-be91-39a8a87a9934.json","externalId":"","uuid":"e0560fc5-fd31-4abe-be91-39a8a87a9934","files":[]}
