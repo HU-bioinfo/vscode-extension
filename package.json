@@ -4,7 +4,7 @@
   "publisher": "hu-bioinfo-workshop",
   "description": "Work environment for R/Python analysis and development",
   "repository": "https://github.com/shuu5/HU_BioInfo_work_env.git",
-  "version": "1.0.9",
+  "version": "1.0.11",
   "engines": {
     "vscode": "^1.96.0"
   },
@@ -35,13 +35,20 @@
     "watch": "tsc -watch -p ./",
     "pretest": "npm run compile && npm run lint",
     "lint": "eslint src",
-    "test": "npm run unit-test",
+    "test": "npm run test:unified",
     "unit-test": "cross-env NODE_ENV=test VSCODE_MOCK=1 mocha --require ts-node/register --ui bdd --extension ts,tsx --recursive 'test/unit/**/*.test.ts' --timeout 60000",
-    "test:coverage": "cross-env NODE_ENV=test VSCODE_MOCK=1 nyc npm run unit-test",
+    "test:coverage": "cross-env NODE_ENV=test VSCODE_MOCK=1 nyc npm run test:unified",
     "integration-test": "npm run compile && cross-env VSCODE_MOCK=0 node ./out/test/runTest.js",
     "e2e-test": "npm run compile && cross-env TEST_TYPE=e2e node ./out/test/runTest.js",
-    "workflow-test": "npm run compile && cross-env RUN_WORKFLOW_TESTS=true node ./out/test/runTest.js",
-    "test:all": "npm run unit-test && npm run workflow-test"
+    "workflow-test": "npm run compile && node ./out/test/runTest.js",
+    "test:unified": "npm run unit-test && npm run workflow-test",
+    "test:all": "npm run test:unified",
+    "test:problematic": "cross-env NODE_ENV=test VSCODE_MOCK=1 mocha --require ts-node/register --ui bdd --extension ts,tsx --timeout 60000 'test/extension.test.ts' 'test/workflow/e2e-workflow.test.ts' 'test/unit/test-helper.test.ts'",
+    "test:stable": "cross-env NODE_ENV=test VSCODE_MOCK=1 mocha --require ts-node/register --ui bdd --extension ts,tsx --recursive 'test/unit/{basic,docker-install,error-handlers,template-processor,vscode-api}.test.ts' --timeout 60000",
+    "workflow-test:stable": "npm run compile && cross-env TEST_STABLE_ONLY=1 node ./out/test/runTest.js",
+    "test:extension": "cross-env NODE_ENV=test VSCODE_MOCK=1 mocha --require ts-node/register --ui bdd --extension ts,tsx --timeout 60000 'test/extension.test.ts' --grep 'Docker Compose設定情報の収集|フォルダ権限設定のテスト'",
+    "test:unit": "cross-env NODE_ENV=test VSCODE_MOCK=1 mocha --require ts-node/register --ui bdd --extension ts,tsx --timeout 60000 'test/unit/**/*.test.ts'",
+    "test:integration": "cross-env NODE_ENV=test mocha --require ts-node/register --ui bdd --extension ts,tsx --timeout 60000 'test/workflow/**/*.test.ts'"
   },
   "devDependencies": {
     "@istanbuljs/nyc-config-typescript": "^1.0.2",

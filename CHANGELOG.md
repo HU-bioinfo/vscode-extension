@@ -4,6 +4,20 @@ All notable changes to the "work-env" extension will be documented in this file.
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.0.11] - 2025-04-05
+
+### Improved
+
+- ドキュメントの整理と更新
+  - テスト関連ドキュメントの統合と明確化
+  - 仕様書の最新状態への更新
+  - 不要なドキュメントの削除
+
+### Fixed
+
+- パッケージバージョンの整合性確保
+  - package.jsonのバージョン番号を更新
+
 ## [1.0.10] - 2025-04-05
 
 ### Fixed

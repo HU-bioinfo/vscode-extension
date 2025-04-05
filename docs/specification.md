@@ -36,9 +36,22 @@ work-env/
 │   └── test-helper.ts    # テスト用ヘルパー関数
 ├── resources/            # 静的リソース
 │   ├── templates/        # テンプレートファイル
-│   │   ├── devcontainer_template/  # .devcontainerディレクトリのテンプレート
+│   │   ├── container_template/  # devcontainerのルートディレクトリテンプレート
 │   │   │   ├── devcontainer.json.template  # devcontainer設定テンプレート
 │   │   │   └── docker-compose.yml.template # Docker Compose設定テンプレート
+│   │   ├── cache_template/     # キャッシュディレクトリのテンプレート
+│   │   ├── projects_template/  # プロジェクトディレクトリのテンプレート
+│   │   │   └── sample_project_template/    # サンプルRプロジェクトのテンプレート
+│   │   │       ├── R_template/             # R関数ディレクトリテンプレート
+│   │   │       ├── data_template/          # データディレクトリテンプレート
+│   │   │       ├── docs_template/          # ドキュメントディレクトリテンプレート
+│   │   │       ├── results_template/       # 結果ディレクトリテンプレート
+│   │   │       ├── scripts_template/       # スクリプトディレクトリテンプレート
+│   │   │       ├── tests_template/         # テストディレクトリテンプレート
+│   │   │       ├── .Rprofile.template      # R設定ファイルテンプレート
+│   │   │       ├── .gitignore.template     # Git除外設定テンプレート
+│   │   │       ├── README.md.template      # プロジェクト説明テンプレート
+│   │   │       └── renv.lock.template      # renv依存関係ファイルテンプレート
 │   │   └── ... その他テンプレートファイル
 │   └── ... その他リソース
 ├── test/                 # テストコード
@@ -136,10 +149,42 @@ Docker がシステムにインストールされていない場合、拡張機�
 
 ## 設定プロセス
 
-1. **プロジェクトフォルダの選択**: 開発するプロジェクトが格納されているフォルダを選択
-2. **キャッシュディレクトリの選択**: ライブラリやパッケージなどのキャッシュを格納するディレクトリを選択
-3. **GitHub Personal Access Token (PAT) の入力**: GitHub リポジトリにアクセスするための認証トークンを入力
-4. **テンプレートの処理**: リソースフォルダから`devcontainer_template`などのテンプレートを取得し、ユーザー設定で値を置換
+1. **作業環境ディレクトリの選択**: ユーザーは1つの親ディレクトリを選択します。この選択したディレクトリ内に`cache`ディレクトリと`container`ディレクトリが作成されます
+2. **GitHub Personal Access Token (PAT) の入力**: GitHub リポジトリにアクセスするための認証トークンを入力
+3. **テンプレートの処理**: リソースフォルダからテンプレートを取得し、`_template`や`.template`拡張子を取り除いた状態で、選択した親ディレクトリに配置します
+
+### ディレクトリ構造の新仕様
+
+選択した親ディレクトリ内に、以下のような構造が自動的に生成されます：
+
+```
+選択した親ディレクトリ/
+├── cache/                # キャッシュディレクトリ（外部からマウントされる）
+│   └── ... キャッシュファイル
+└── container/            # コンテナ設定とプロジェクトファイル
+    ├── .devcontainer/    # VS Code Remote Container設定
+    │   ├── devcontainer.json
+    │   └── docker-compose.yml
+    └── projects/         # プロジェクトファイル（コンテナ内部に保持）
+        └── ... プロジェクトファイル
+```
+
+この構造により、キャッシュディレクトリのみが外部からマウントされ、プロジェクトファイルはコンテナ内部に保持されます。
+
+### テンプレート構成
+
+テンプレート構成は以下の3つの主要なディレクトリから構成されています：
+
+1. **container_template**: `container`ディレクトリのテンプレートで、devcontainer.jsonやdocker-compose.ymlなどの基本設定ファイルを含む
+2. **cache_template**: `cache`ディレクトリのテンプレートで、キャッシュ関連の初期設定ファイルが含まれる
+3. **projects_template**: `container/projects`ディレクトリのテンプレートで、プロジェクト関連の初期ファイルが含まれる
+   - **sample_project_template**: R開発用のサンプルプロジェクトテンプレート
+     - サブディレクトリも`_template`サフィックスを持つ (`R_template`, `data_template`など)
+     - ファイルは`.template`拡張子を持つ (`.Rprofile.template`, `renv.lock.template`など)
+
+テンプレートからの生成ルール：
+- テンプレートファイル名から`_template`や`.template`拡張子が取り除かれる
+- ユーザーが選択した親ディレクトリに、適切なサブディレクトリ構造を保ちながら配置される
 
 ## エラーハンドリング
 
@@ -170,12 +215,27 @@ Docker がシステムにインストールされていない場合、拡張機�
    - **エラーハンドリングテスト**: 各種エラーケースの適切な処理を検証
    - **モック/スタブを活用**: VS Code API、Docker コマンド実行などの外部依存をモック化
 
-2. **ワークフローテスト (Workflow Tests)**:
+2. **統合テスト (Integration Tests)**:
    - **ユーザーシナリオのエンドツーエンドテスト**: 実際のユースケースに沿った一連の操作を検証
    - **統合テスト**: 複数のモジュールが連携して正しく動作することを確認
    - **環境構築プロセスの検証**: Docker コンテナのセットアップから環境構築までの一連のフローを検証
 
 これらのテストによって、コードの品質と機能の信頼性を確保します。テストは CI/CD パイプラインの一部として自動実行され、コードの変更が既存の機能に影響を与えないことを保証します。
+
+### テスト実行アプローチ
+
+当初は基本的なE2Eテストとワークフローテストを分離していましたが、開発効率化のため統合アプローチに変更しました：
+
+1. **テスト統合**: 
+   - ワークフローテストと基本的なE2Eテストを単一のテスト実行で検証
+   - フラグによるテスト分離を廃止し、すべてのテストを常に実行
+   - テストの独立性を保ちながらも効率的な実行を実現
+
+2. **テスト実行コマンド**:
+   - `npm run test`: すべてのテスト（ユニットテスト、E2Eテスト、ワークフローテスト）を実行
+   - `npm run coverage`: テストカバレッジレポートを生成
+
+この統合アプローチにより、開発サイクルを効率化し、一貫したテスト実行環境を提供します。
 
 ### テストカバレッジ目標
 
@@ -214,15 +274,29 @@ services:
       - PROJ_DIR="/home/user/proj"
     volumes:
       - {{CACHE_FOLDER}}:/home/user/cache
-      - {{PROJECT_FOLDER}}:/home/user/proj
     command: sleep infinity
 ```
 
 環境変数とボリュームマウントにより、以下のような機能を提供します：
 
 - GitHub リポジトリへのアクセス (GITHUB_PAT)
-- ホストマシンのプロジェクトフォルダをコンテナの `/home/user/proj` にマウント
-- ホストマシンのキャッシュフォルダをコンテナの `/home/user/cache` にマウント
+- ホストマシンのキャッシュフォルダのみをコンテナの `/home/user/cache` にマウント
+- プロジェクトフォルダはdevcontainer内に配置され、外部からのマウントは行わない
+
+### テンプレート構成
+
+テンプレート構成は以下の3つの主要なディレクトリから構成されています：
+
+1. **container_template**: `container`ディレクトリのテンプレートで、devcontainer.jsonやdocker-compose.ymlなどの基本設定ファイルを含む
+2. **cache_template**: `cache`ディレクトリのテンプレートで、キャッシュ関連の初期設定ファイルが含まれる
+3. **projects_template**: `container/projects`ディレクトリのテンプレートで、プロジェクト関連の初期ファイルが含まれる
+   - **sample_project_template**: R開発用のサンプルプロジェクトテンプレート
+     - サブディレクトリも`_template`サフィックスを持つ (`R_template`, `data_template`など)
+     - ファイルは`.template`拡張子を持つ (`.Rprofile.template`, `renv.lock.template`など)
+
+テンプレートからの生成ルール：
+- テンプレートファイル名から`_template`や`.template`拡張子が取り除かれる
+- ユーザーが選択した親ディレクトリに、適切なサブディレクトリ構造を保ちながら配置される
 
 ## 展望と改善点
 
