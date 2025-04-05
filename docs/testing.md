@@ -14,6 +14,8 @@ work-env 拡張機能のテストは、ユニットテストに焦点を当て�
 
 - Node.js と npm
 - ts-mocha (TypeScript で Mocha テストを実行するためのツール)
+- nyc (Istanbul) - コードカバレッジ計測ツール
+- sinon - モック・スタブ・スパイ作成用ライブラリ
 
 ### テスト設定
 
@@ -22,7 +24,8 @@ work-env 拡張機能のテストは、ユニットテストに焦点を当て�
 ```json
 "scripts": {
   "test": "npm run unit-test",
-  "unit-test": "ts-mocha -p tsconfig.json test/**/*.test.ts"
+  "unit-test": "cross-env NODE_ENV=test VSCODE_MOCK=1 ts-mocha -p tsconfig.json test/**/*.test.ts",
+  "test:coverage": "cross-env NODE_ENV=test VSCODE_MOCK=1 nyc npm run unit-test"
 }
 ```
 
@@ -34,6 +37,8 @@ work-env 拡張機能のテストは、ユニットテストに焦点を当て�
 
 - `basic.test.ts`: 基本的な機能テスト
 - `error-handlers.test.ts`: エラーハンドリングのテスト
+- `extension.test.ts`: 拡張機能のメイン機能テスト
+- `test-helper.test.ts`: テストヘルパー関数のテスト
 
 これらのテストは以下のコマンドで実行できます：
 
@@ -51,8 +56,19 @@ npm test
   - エラーメッセージ解析の確認
 
 - **エラーハンドリングテスト**:
+
   - Docker 関連のエラー処理確認
+  - Docker Compose 関連のエラー処理確認
+  - ファイルシステム関連のエラー処理確認
+  - ネットワーク関連のエラー処理確認
   - 入力チェック関連のエラー処理確認
+
+- **拡張機能のテスト**:
+  - コマンド登録のテスト
+  - アクティベーション時の動作確認
+  - Remote Containers 拡張機能チェック
+  - Docker 関連機能のテスト
+  - フォルダコピーや権限設定のテスト
 
 ## モック戦略
 
@@ -60,48 +76,157 @@ npm test
 
 ### VSCode API モック
 
-テスト用に VSCode API の一部をモックします。以下はモックに使用するライブラリです：
+テスト用に VSCode API の一部をモックします。以下はモックの実装方法です：
 
-- Sinon: 関数のスタブとスパイ
-- Chai: アサーション
+```typescript
+// src/test-helper.ts からの抜粋
+const vscodeModule: VSCodeNamespace =
+  process.env.NODE_ENV !== "test"
+    ? (require("vscode") as VSCodeNamespace)
+    : {
+        window: {
+          showInformationMessage: sinon.stub(),
+          showErrorMessage: sinon.stub(),
+          showInputBox: sinon.stub(),
+          showOpenDialog: sinon.stub(),
+          activeTerminal: null,
+        },
+        commands: {
+          executeCommand: sinon.stub(),
+          registerCommand: sinon.stub(),
+        },
+        // その他のモック対象
+      };
+```
+
+- Sinon: 関数のスタブとスパイを作成するために使用
+- 環境変数 `NODE_ENV=test` を使用してテスト環境を検出
+- テスト時に VSCode API の代わりにモックオブジェクトを提供
 
 ### Docker コマンドモック
 
 Docker コマンドは、`child_process.exec` のモックによりテストします：
 
 ```typescript
-import * as sinon from "sinon";
-import { exec } from "child_process";
-
 // Docker コマンドのモック例
-sinon.stub(exec).callsFake((command, callback) => {
-  if (command === "docker --version") {
-    callback(null, { stdout: "Docker version 20.10.12" });
-  } else if (command === "docker info") {
-    callback(null, { stdout: "Docker info output" });
-  } else {
-    callback(new Error("Command not found"), null);
+export function mockDockerSuccess() {
+  childProcess.exec.callsFake((cmd, callback) => {
+    if (cmd.includes("docker") && callback && typeof callback === "function") {
+      callback(null, { stdout: "Docker is running", stderr: "" }, "");
+    }
+    return {
+      on: sinon.stub(),
+      stdout: { on: sinon.stub() },
+      stderr: { on: sinon.stub() },
+    };
+  });
+}
+
+// Docker エラーのモック
+export function mockDockerFailure(errorMsg = "Docker command failed") {
+  childProcess.exec.callsFake((cmd, callback) => {
+    if (cmd.includes("docker") && callback && typeof callback === "function") {
+      callback(new Error(errorMsg), { stdout: "", stderr: errorMsg }, "");
+    }
+    return {
+      on: sinon.stub(),
+      stdout: { on: sinon.stub() },
+      stderr: { on: sinon.stub() },
+    };
+  });
+}
+```
+
+### ファイルシステムモック
+
+`fs` モジュールをモックして、ファイルシステム操作をテストします：
+
+```typescript
+// ファイルシステムのモック例
+export function setupMockFileSystem(structure: Record<string, any>) {
+  fsMock.existsSync.callsFake((filePath: string) => {
+    // ファイルパスが存在するかチェックするモック実装
+    let current = structure;
+    const parts = filePath.split(path.sep).filter(Boolean);
+
+    for (const part of parts) {
+      if (!current[part]) {
+        return false;
+      }
+      current = current[part];
+    }
+
+    return true;
+  });
+
+  // その他のファイルシステム関数もモック化
+}
+```
+
+### モックのリセットと関数の復元
+
+テスト間の干渉を防ぐため、各テスト前にモックをリセットし、元の関数を復元する方法を採用しています：
+
+```typescript
+// テスト前のセットアップ
+beforeEach(() => {
+  // すべてのモックをリセット
+  sinon.restore();
+  resetMocks();
+});
+
+// 特定の関数をモックする例（try/finallyパターン）
+it("特定のテストケース", function () {
+  // オリジナル関数の保存
+  const originalFunction = moduleName.functionName;
+
+  try {
+    // テスト用にモック関数を設定
+    moduleName.functionName = sinon.stub().returns(expectedValue);
+
+    // テスト実行と検証
+    // ...
+  } finally {
+    // 必ず元の関数を復元（テストが失敗しても実行される）
+    moduleName.functionName = originalFunction;
   }
 });
 ```
 
+このアプローチの利点:
+
+- テスト間の副作用がなくなり、テストの信頼性が向上
+- テストが途中で失敗しても、次のテストに影響を与えない
+- グローバルなコンテキストを変更する場合でも、元の状態に確実に復元される
+
 ## テストカバレッジ
 
-テストカバレッジを測定するために、追加のツールを導入することが可能です：
+テストカバレッジを測定するために、nyc を使用します：
 
 ```bash
-npm install -D nyc
+npm run test:coverage
 ```
 
-`package.json`に以下のスクリプトを追加することでカバレッジ測定が可能になります：
+これにより、以下のカバレッジレポートが生成されます：
 
-```json
-"scripts": {
-  "test:coverage": "nyc npm run unit-test"
-}
+```
+-------------------|---------|----------|---------|---------|----------------------------------------
+File               | % Stmts | % Branch | % Funcs | % Lines | Uncovered Line #s
+-------------------|---------|----------|---------|---------|----------------------------------------
+All files          |    64.4 |     51.7 |   58.75 |   65.75 |
+ error-handlers.ts |    75.4 |       75 |      70 |    75.4 | ...
+ extension.ts      |   78.37 |    57.57 |   92.59 |   78.88 | ...
+ test-helper.ts    |   44.91 |    24.13 |   34.88 |   47.16 | ...
+-------------------|---------|----------|---------|---------|----------------------------------------
 ```
 
-目標カバレッジ：
+### カバレッジ目標
+
+- 関数カバレッジ: 50%以上
+- 行カバレッジ: 60%以上
+- 分岐カバレッジ: 50%以上
+
+この目標は継続的に改善しながら、最終的には以下を目指します：
 
 - 関数カバレッジ: 90%以上
 - 行カバレッジ: 80%以上
@@ -127,6 +252,8 @@ jobs:
         run: npm ci
       - name: Run tests
         run: npm test
+      - name: Run coverage test
+        run: npm run test:coverage
 ```
 
 ## 手動テストチェックリスト

@@ -4,6 +4,20 @@ All notable changes to the "work-env" extension will be documented in this file.
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.0.6] - 2024-07-30
+
+### 修正
+
+- モックリセット方法の改善により、テスト間の干渉を防止
+- `preflightChecks`関数のテストを改善し、Docker 未インストール時の動作を正確に検証
+- `vscode.env.openExternal`のモック方法を修正し、Docker インストールガイド表示機能のテストを安定化
+- テスト終了時に元の関数を確実に復元するために`try/finally`パターンを導入
+
+### 改善
+
+- 明確なアサーションメッセージの追加によりテスト失敗時のデバッグを容易化
+- テスト実行前にモックを確実にリセットする仕組みを強化
+
 ## [1.0.5] - 2025-04-06
 
 ### Fixed
