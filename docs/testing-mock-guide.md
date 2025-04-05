@@ -567,103 +567,159 @@ vscode.window.showInputBox = sinon.stub().resolves("input"); // Promise<string> 
 
 ## モックのベストプラクティス
 
-VSCode 拡張機能テストで効果的なモックを作成・使用するためのベストプラクティスを紹介します：
+テスト対象のコードを効果的にモックするためのベストプラクティスをいくつか紹介します。
 
-1. **テスト前後にモックをリセットする**:
+### 1. テスト前後での適切なモックのリセット
 
-   ```typescript
-   beforeEach(() => {
-     // すべてのモックをリセット
-     sinon.restore();
-     resetMocks();
-   });
+Sinon を使用する場合、テストの前後でモックをきちんとリセットすることが重要です：
 
-   afterEach(() => {
-     // テスト後のクリーンアップ
-     sinon.restore();
-   });
-   ```
+```typescript
+// テスト前にモックをリセット
+beforeEach(() => {
+  sinon.reset(); // または sinon.restore();
+  resetMocks();
+});
 
-2. **try/finally パターンでモック関数を復元する**:
+// または各テストで個別にリセット
+afterEach(() => {
+  sinon.restore();
+});
+```
 
-   ```typescript
-   it("テストケース", function () {
-     // オリジナル関数の保存
-     const originalFunction = module.functionToMock;
+### 2. 関数の完全な再定義とリストア
 
-     try {
-       // テスト用にモック
-       module.functionToMock = sinon.stub().returns(mockValue);
+特に複雑な依存関係を持つ関数をテストする場合は、スタブだけでなく関数全体を再定義し、テスト後に確実に元の関数を復元するのが効果的です：
 
-       // テスト...
-     } finally {
-       // 必ず元の関数を復元
-       module.functionToMock = originalFunction;
-     }
-   });
-   ```
+```typescript
+it("関数の再定義とリストアパターン", async function () {
+  // 元の関数を保存
+  const originalFunction = module.targetFunction;
+  const originalDependencyA = module.dependencyA;
+  const originalDependencyB = module.dependencyB;
 
-3. **アサーションメッセージを明示的に記述する**:
+  try {
+    // 依存関数をモックに置き換え
+    module.dependencyA = async () => mockResultA;
+    module.dependencyB = sinon.stub().resolves(mockResultB);
 
-   ```typescript
-   assert.ok(
-     vscode.window.showErrorMessage.called,
-     "エラーメッセージが表示されていません"
-   );
-   ```
+    // テスト対象の関数を再定義
+    module.targetFunction = async function () {
+      // テスト用の実装を記述
+      if (!(await module.dependencyA())) {
+        return false;
+      }
 
-4. **必要最小限のモックに留める**:
-   テスト対象のコードが依存する部分だけをモックし、それ以外は実際の実装を使うようにします。
-
-5. **複雑な状態をもつモックを避ける**:
-   モックの状態が複雑になると、テストも複雑になり、メンテナンスが困難になります。
-
-6. **非同期関数のモックには`resolves`/`rejects`を使用する**:
-
-   ```typescript
-   // Promiseを返す関数のモック
-   vscode.window.showErrorMessage.resolves("ボタンテキスト");
-   vscode.window.showInputBox.rejects(new Error("エラー"));
-   ```
-
-7. **モック化されているか確認する**:
-
-   ```typescript
-   // テスト前にモックされているか確認
-   if (!sinon.isSinonProxy(vscode.window.showErrorMessage)) {
-     vscode.window.showErrorMessage = sinon.stub();
-   }
-   ```
-
-8. **ドキュメントとコメントを充実させる**:
-   複雑なモックの場合、何をモックしているのか、どのような動作を期待しているのかを明確にドキュメント化します。
-
-9. **一貫したモックの命名規則を使用する**:
-
-   ```typescript
-   // モック関数の命名例
-   mockDockerSuccess();
-   mockDockerFailure();
-   mockFileSystemError();
-   ```
-
-10. **モックの共有インターフェースを作成する**:
-
-    ```typescript
-    // モジュールにテスト用インターフェースを追加
-    export const _test = {
-      setVSCodeMock: (mock: any) => {
-        vscode = mock;
-      },
-      resetMock: () => {
-        // モックをリセット
-      },
+      const result = await module.dependencyB();
+      return result;
     };
-    ```
 
-11. **テストの副作用を排除する**:
-    あるテストが他のテストに影響を与えないよう、各テストはできるだけ独立した状態で実行されるようにします。
-    グローバルな状態を変更する場合は、必ず元に戻す処理を入れてください。
+    // テスト実行
+    const result = await module.targetFunction();
 
-12. **現実的なエラーケースをシミュレートする**:
-    実際の開発環境で発生する可能性のあるエラーケースをシミュレートし、適切に処理されることを確認します。
+    // 検証
+    assert.strictEqual(result, expectedResult);
+    assert.ok(module.dependencyB.calledOnce);
+  } finally {
+    // 必ず元の関数を復元（テスト失敗時も実行される）
+    module.targetFunction = originalFunction;
+    module.dependencyA = originalDependencyA;
+    module.dependencyB = originalDependencyB;
+  }
+});
+```
+
+このパターンの利点:
+
+- 依存関係の解決が明示的になり、テストの意図がわかりやすい
+- 再定義した関数の実装をテスト内で完全に制御できる
+- try/finally パターンにより、テストが失敗しても確実に元の関数が復元される
+- スタブが正しく動作しない場合の代替手段として有効
+
+### 3. モック対象を最小限に
+
+モックは必要最小限にとどめ、実際の実装をできるだけ使用するようにします：
+
+```typescript
+// モックを最小限にするテスト例
+it("必要最小限のモック", () => {
+  // 実際に外部に影響する部分だけモック
+  const execStub = sinon.stub(childProcess, "exec");
+  execStub.callsFake((cmd, callback) => {
+    callback(null, { stdout: "mock output" });
+    return {} as any;
+  });
+
+  // 実際のコードをそのまま使う
+  return myFunction().then((result) => {
+    assert.strictEqual(result, "expected result");
+  });
+});
+```
+
+### 4. コンテキスト依存のテスト分離
+
+テスト間で共有される状態（グローバル変数、環境変数など）に依存するテストは注意が必要です：
+
+```typescript
+// 環境変数に依存するテスト
+describe("環境変数依存のテスト", () => {
+  // 元の環境変数を保存
+  const originalEnv = process.env.NODE_ENV;
+
+  // テスト用に環境変数を設定
+  beforeEach(() => {
+    process.env.NODE_ENV = "test";
+  });
+
+  // テスト実行
+  it("テスト環境での動作確認", () => {
+    // テスト内容
+  });
+
+  // 環境変数を元に戻す
+  afterEach(() => {
+    process.env.NODE_ENV = originalEnv;
+  });
+});
+```
+
+### 5. 外部モジュールのモック
+
+proxyquire などのツールを使用して外部モジュールごとモックする方法は便利ですが、場合によっては信頼性の問題が発生することがあります：
+
+```typescript
+// 外部モジュールのモック例
+const moduleProxy = proxyquire("../src/my-module", {
+  vscode: vscodeMock,
+  fs: fsMock,
+  "./dependency": dependencyMock,
+});
+
+// モック動作が不安定な場合、直接上書きの方が信頼性が高い場合も
+if (moduleProxy.testTargetFunction不安定な場合) {
+  moduleProxy.testTargetFunction = 手動実装した関数;
+}
+```
+
+### 6. 複雑なオブジェクトのモック
+
+VS Code の複雑な API や設定オブジェクトをモックする場合は、型定義を活用して正確なモックを作成しましょう：
+
+```typescript
+// 複雑なVS Codeオブジェクトのモック例
+const configMock: vscode.WorkspaceConfiguration = {
+  get: sinon.stub().callsFake((key: string) => {
+    if (key === "setting1") return "value1";
+    if (key === "setting2") return true;
+    return undefined;
+  }),
+  update: sinon.stub().resolves(),
+  has: sinon.stub().returns(true),
+  // その他必要なプロパティを追加
+};
+
+// 使用例
+vscode.workspace.getConfiguration.returns(configMock);
+```
+
+これらのベストプラクティスを適用することで、より堅牢でメンテナンスしやすいテストコードを作成できます。
