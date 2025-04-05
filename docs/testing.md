@@ -2,20 +2,43 @@
 
 ## テスト概要
 
-work-env 拡張機能のテストは、ユニットテストに焦点を当てて実施します：
+work-env 拡張機能のテストは、以下の種類のテストに焦点を当てて実施します：
 
-- **ユニットテスト**: 個別の関数やコンポーネントの動作を確認
+- **ユニットテスト**: 個別の関数やコンポーネントの動作を確認（モック環境）
+- **統合テスト**: 実際のVS Code APIを使用した統合動作を確認
+- **E2Eテスト**: 実際のVS Code環境でのエンドツーエンドの動作検証
+- **ワークフローテスト**: ユーザーの使用シナリオに沿った一連の操作の検証
 
 これらのテストにより、拡張機能の信頼性と安定性を確保します。
+
+## 重要: テスト実行に関する注意事項
+
+**ユニットテストとワークフローテストは必ず個別に実行してください。**
+
+- ユニットテスト: `npm run unit-test`
+- ワークフローテスト: `npm run workflow-test`
+- E2Eテスト: `npm run e2e-test`
+- すべてのテスト: `npm run test:all`（内部で順次実行）
+
+両方のテストを同時に実行すると、以下の問題が発生します:
+1. Sinonのスタブが重複して登録されエラーになる
+2. テスト環境の衝突（モックモードと実際のVS Code API間）
+3. テスト間の干渉によるランダムな失敗
+
+これらの問題は、テストの実行環境と設計に起因するもので、各テストタイプが異なる実行コンテキストを必要とするためです。同時実行を試みると、`Attempted to wrap X which is already stubbed`のようなエラーが発生します。
+
+`npm run test:all`のような一括実行コマンドは、内部で個別に順次実行するように設計されています。
 
 ## テスト環境
 
 ### 必要なツール
 
 - Node.js と npm
-- ts-mocha (TypeScript で Mocha テストを実行するためのツール)
+- mocha - テストフレームワーク
+- ts-node - TypeScriptで直接テストを実行するためのツール
 - nyc (Istanbul) - コードカバレッジ計測ツール
 - sinon - モック・スタブ・スパイ作成用ライブラリ
+- cross-env - 環境変数の設定
 
 ### テスト設定
 
@@ -23,40 +46,73 @@ work-env 拡張機能のテストは、ユニットテストに焦点を当て�
 
 ```json
 "scripts": {
-  "test": "npm run unit-test",
-  "unit-test": "cross-env NODE_ENV=test VSCODE_MOCK=1 ts-mocha -p tsconfig.json test/**/*.test.ts",
-  "test:coverage": "cross-env NODE_ENV=test VSCODE_MOCK=1 nyc npm run unit-test"
+  "test": "npm run test:unified",
+  "unit-test": "cross-env NODE_ENV=test VSCODE_MOCK=1 mocha --require ts-node/register --ui bdd --extension ts,tsx --recursive 'test/unit/**/*.test.ts' --timeout 60000",
+  "test:coverage": "cross-env NODE_ENV=test VSCODE_MOCK=1 nyc npm run test:unified",
+  "integration-test": "npm run compile && cross-env VSCODE_MOCK=0 node ./out/test/runTest.js",
+  "e2e-test": "npm run compile && cross-env TEST_TYPE=e2e node ./out/test/runTest.js",
+  "workflow-test": "npm run compile && node ./out/test/runTest.js",
+  "test:unified": "npm run unit-test && npm run workflow-test",
+  "test:all": "npm run test:unified"
 }
+```
+
+### テストモード
+
+テストは2つのモードで実行されます：
+
+1. **モックモード（ユニットテスト）**: `VSCODE_MOCK=1` 環境変数使用
+   - VS Code APIをモック化
+   - 外部依存をモック化
+   - 高速に実行可能
+
+2. **統合テストモード**: `VSCODE_MOCK=0` 環境変数使用
+   - 実際のVS Code APIを使用
+   - 一部のテストはスキップ
+   - 実際の環境での動作確認
+
+テストモードは `test/setup.ts` で管理されています：
+
+```typescript
+export enum TEST_MODE {
+  MOCK = 'モック（ユニットテスト）',
+  INTEGRATION = '統合テスト'
+}
+
+// 環境変数からテストモードを決定
+export const CURRENT_TEST_MODE = process.env.VSCODE_MOCK === '0' 
+  ? TEST_MODE.INTEGRATION 
+  : TEST_MODE.MOCK;
+
+// テスト開始時にモードを表示
+console.log(`テストモード: ${CURRENT_TEST_MODE}`);
 ```
 
 ## テストの種類
 
 ### ユニットテスト
 
-ユニットテストは `test/` ディレクトリ内の `.test.ts` ファイルに記述されています。
+ユニットテストは `test/unit/` ディレクトリ内の `.test.ts` ファイルに記述されています。
 
 - `basic.test.ts`: 基本的な機能テスト
 - `error-handlers.test.ts`: エラーハンドリングのテスト
-- `extension.test.ts`: 拡張機能のメイン機能テスト
+- `docker-install.test.ts`: Dockerインストール関連のテスト
 - `test-helper.test.ts`: テストヘルパー関数のテスト
+- `vscode-api.test.ts`: VS Code API関連のテスト
 
 これらのテストは以下のコマンドで実行できます：
 
 ```bash
 npm run unit-test
-# または
-npm test
 ```
 
-#### テスト内容
+#### ユニットテスト内容
 
 - **基本的なテスト**:
-
   - エラーの有無による条件分岐の確認
   - エラーメッセージ解析の確認
 
 - **エラーハンドリングテスト**:
-
   - Docker 関連のエラー処理確認
   - Docker Compose 関連のエラー処理確認
   - ファイルシステム関連のエラー処理確認
@@ -69,6 +125,156 @@ npm test
   - Remote Containers 拡張機能チェック
   - Docker 関連機能のテスト
   - フォルダコピーや権限設定のテスト
+
+### E2Eテスト
+
+E2Eテストは、実際のVS Code環境内での拡張機能の動作を検証するためのテストです。モックを使わず、実際のVS Code APIを使用して、ユーザーの操作シーケンスに沿ったテストを実行します。
+
+E2Eテストは `test/workflow/` ディレクトリ内の `.test.ts` ファイルに記述されています。
+
+- `e2e.test.ts`: 基本的なE2Eテスト
+- `e2e-workflow.test.ts`: ユーザーワークフローに沿ったE2Eテスト
+
+これらのテストは以下のコマンドで実行できます：
+
+```bash
+npm run e2e-test
+npm run workflow-test
+```
+
+#### E2Eテストの特徴
+
+1. **実際のユーザー操作シーケンスの模倣**
+   - コマンドパレット経由のコマンド実行
+   - ダイアログでの選択操作
+   - フォルダ選択、入力フィールドへの入力など
+
+2. **実際の環境での検証**
+   - 実際のVS Code API呼び出し
+   - 実際のファイルシステム操作
+   - 実際のUIとの対話
+
+3. **テスト用の隔離環境**
+   - テスト専用のプロジェクトフォルダとキャッシュフォルダを使用
+   - テスト後のクリーンアップ
+
+#### E2Eテスト環境のセットアップ
+
+```typescript
+// テスト用のプロジェクトとキャッシュフォルダのパス
+const TEST_PROJECT_DIR = path.join(__dirname, '..', 'test-resources', 'test-project');
+const TEST_CACHE_DIR = path.join(__dirname, '..', 'test-resources', 'test-cache');
+
+// テスト環境のセットアップヘルパー関数
+async function setupTestEnvironment() {
+  console.log('テスト環境をセットアップしています...');
+  
+  // テスト用ディレクトリの作成
+  if (!fs.existsSync(TEST_PROJECT_DIR)) {
+    fs.mkdirSync(TEST_PROJECT_DIR, { recursive: true });
+  }
+  
+  if (!fs.existsSync(TEST_CACHE_DIR)) {
+    fs.mkdirSync(TEST_CACHE_DIR, { recursive: true });
+  }
+  
+  // テスト用のダミーファイルを作成
+  fs.writeFileSync(path.join(TEST_PROJECT_DIR, 'test-file.txt'), 'Test content');
+}
+```
+
+#### UI操作のシミュレーション
+
+E2Eテストでは、VS Code APIの関数をオーバーライドして、ユーザーの選択やダイアログ操作をシミュレートします：
+
+```typescript
+// 通常のUI関数を保存
+const showInputBoxOriginal = vscode.window.showInputBox;
+const showOpenDialogOriginal = vscode.window.showOpenDialog;
+
+// モックUIをセットアップ
+vscode.window.showInputBox = async function (options?: vscode.InputBoxOptions): Promise<string | undefined> {
+  if (options?.prompt?.includes('GitHub')) {
+    return 'test-pat-123456';
+  }
+  return undefined;
+};
+
+vscode.window.showOpenDialog = async function (options?: vscode.OpenDialogOptions): Promise<vscode.Uri[] | undefined> {
+  if (options?.title?.includes('プロジェクト')) {
+    return [vscode.Uri.file(TEST_PROJECT_DIR)];
+  } else if (options?.title?.includes('キャッシュ')) {
+    return [vscode.Uri.file(TEST_CACHE_DIR)];
+  }
+  return undefined;
+};
+
+try {
+  // テスト対象のコード実行
+  // ...
+} finally {
+  // 元のUIに戻す
+  vscode.window.showInputBox = showInputBoxOriginal;
+  vscode.window.showOpenDialog = showOpenDialogOriginal;
+}
+```
+
+#### E2Eテストケースの例
+
+```typescript
+it('work-env.reset-configコマンドが設定をリセットできること', async function () {
+  // コマンド実行前に設定ファイルを作成
+  const testConfigPath = path.join(TEST_CACHE_DIR, 'work-env-config.json');
+  const testConfig = {
+    projectFolder: '/test/project',
+    cacheFolder: '/test/cache',
+    githubPat: 'test-pat'
+  };
+  
+  fs.writeFileSync(testConfigPath, JSON.stringify(testConfig, null, 2));
+  assert.ok(fs.existsSync(testConfigPath), '設定ファイルが作成されていません');
+
+  // 通常のUIを使わずにテスト用のモックUI（自動応答）をセットアップ
+  const showInformationMessageOriginal = vscode.window.showInformationMessage;
+  vscode.window.showInformationMessage = async function (...args: any[]): Promise<any> {
+    return '設定をリセット';
+  };
+
+  try {
+    // コマンドを実行
+    await vscode.commands.executeCommand('work-env.reset-config');
+    
+    // 設定ファイルが削除されたことを確認
+    assert.ok(!fs.existsSync(testConfigPath) || 
+             JSON.stringify(JSON.parse(fs.readFileSync(testConfigPath, 'utf8'))) === '{}', 
+             '設定ファイルがリセットされていません');
+  } finally {
+    // 元のUIに戻す
+    vscode.window.showInformationMessage = showInformationMessageOriginal;
+  }
+});
+```
+
+#### 現在のE2Eテスト対象
+
+1. **拡張機能の基本機能**
+   - 拡張機能のアクティベーション
+   - コマンドの登録と実行
+
+2. **設定関連の機能**
+   - 設定のバリデーション
+   - 設定のリセット
+
+3. **ユーザー操作シーケンス**
+   - プロジェクトフォルダの選択
+   - キャッシュフォルダの選択
+   - GitHubトークンの入力
+
+4. **ユーザーワークフロー**
+   - 初回実行ワークフロー - 環境構築プロセス全体
+   - 設定リセットワークフロー - `work-env.reset-config`コマンド
+   - Dockerインストールワークフロー - Docker未インストール時の対応
+   - Remote Containersインストールワークフロー - Remote Containers拡張機能未インストール時の対応
 
 ## モック戦略
 
@@ -146,121 +352,83 @@ export function mockDockerFailure(errorMsg = "Docker command failed") {
 export function setupMockFileSystem(structure: Record<string, any>) {
   fsMock.existsSync.callsFake((filePath: string) => {
     // ファイルパスが存在するかチェックするモック実装
-    let current = structure;
-    const parts = filePath.split(path.sep).filter(Boolean);
-
-    for (const part of parts) {
-      if (!current[part]) {
-        return false;
-      }
-      current = current[part];
-    }
-
-    return true;
+    return true; // または計算された結果
   });
-
-  // その他のファイルシステム関数もモック化
 }
 ```
 
-### モックのリセットと関数の復元
+## テスト実行手順
 
-テスト間の干渉を防ぐため、各テスト前にモックをリセットし、元の関数を復元する方法を採用しています：
-
-```typescript
-// テスト前のセットアップ
-beforeEach(() => {
-  // すべてのモックをリセット
-  sinon.restore();
-  resetMocks();
-});
-
-// 特定の関数をモックする例（try/finallyパターン）
-it("特定のテストケース", function () {
-  // オリジナル関数の保存
-  const originalFunction = moduleName.functionName;
-
-  try {
-    // テスト用にモック関数を設定
-    moduleName.functionName = sinon.stub().returns(expectedValue);
-
-    // テスト実行と検証
-    // ...
-  } finally {
-    // 必ず元の関数を復元（テストが失敗しても実行される）
-    moduleName.functionName = originalFunction;
-  }
-});
-```
-
-このアプローチの利点:
-
-- テスト間の副作用がなくなり、テストの信頼性が向上
-- テストが途中で失敗しても、次のテストに影響を与えない
-- グローバルなコンテキストを変更する場合でも、元の状態に確実に復元される
-
-## テストカバレッジ
-
-テストカバレッジを測定するために、nyc を使用します：
+以下のコマンドでテストを実行できます：
 
 ```bash
+# ユニットテスト
+npm run unit-test
+
+# カバレッジレポート付きユニットテスト
 npm run test:coverage
+
+# ワークフローテスト
+npm run workflow-test
+
+# E2Eテスト
+npm run e2e-test
+
+# すべてのテスト
+npm run test:all
 ```
 
-これにより、以下のカバレッジレポートが生成されます：
+カバレッジレポートは `coverage/` ディレクトリに生成されます。
 
-```
--------------------|---------|----------|---------|---------|----------------------------------------
-File               | % Stmts | % Branch | % Funcs | % Lines | Uncovered Line #s
--------------------|---------|----------|---------|---------|----------------------------------------
-All files          |    64.4 |     51.7 |   58.75 |   65.75 |
- error-handlers.ts |    75.4 |       75 |      70 |    75.4 | ...
- extension.ts      |   78.37 |    57.57 |   92.59 |   78.88 | ...
- test-helper.ts    |   44.91 |    24.13 |   34.88 |   47.16 | ...
--------------------|---------|----------|---------|---------|----------------------------------------
-```
+## テストのベストプラクティス
 
-### カバレッジ目標
+1. **テスト用の隔離環境を使用する**
+   - 実際の環境に影響を与えないようにする
+   - テスト専用のディレクトリを使用する
 
-- 関数カバレッジ: 50%以上
-- 行カバレッジ: 60%以上
-- 分岐カバレッジ: 50%以上
+2. **テスト後のクリーンアップ**
+   - テスト中に作成されたファイルやリソースを削除する
+   - afterブロックで必ずリソースを解放する
 
-この目標は継続的に改善しながら、最終的には以下を目指します：
+3. **UI操作の適切なシミュレーション**
+   - 実際のVS Code APIをオーバーライドする
+   - try/finallyパターンで確実に元の関数に戻す
 
-- 関数カバレッジ: 90%以上
-- 行カバレッジ: 80%以上
-- 分岐カバレッジ: 75%以上
+4. **適切なエラーハンドリング**
+   - 各テストケースでは適切にエラーをキャッチする
+   - エラーメッセージを分かりやすく表示する
 
-## CI/CD パイプライン統合
+5. **タイムアウト設定**
+   - 長時間実行されるE2Eテストには十分なタイムアウト時間を設定する
 
-GitHub Actions を使用して、プルリクエストやプッシュ時に自動的にテストを実行することをお勧めします：
+## 今後の改善課題
 
-```yaml
-name: Test
-on: [push, pull_request]
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      - name: Setup Node.js
-        uses: actions/setup-node@v2
-        with:
-          node-version: "16"
-      - name: Install dependencies
-        run: npm ci
-      - name: Run tests
-        run: npm test
-      - name: Run coverage test
-        run: npm run test:coverage
-```
+現在のテストカバレッジは以下の通りです（2025-04-05時点）：
 
-## 手動テストチェックリスト
+| ファイル            | ステートメント | ブランチ | 関数   | 行     |
+| ------------------- | -------------- | -------- | ------ | ------ |
+| 全体                | 55.44%         | 41.47%   | 57.79% | 56.09% |
+| docker-installer.ts | 13.28%         | 9.58%    | 11.76% | 13.47% |
+| error-handlers.ts   | 87.30%         | 89.83%   | 80.00% | 87.30% |
+| extension.ts        | 67.60%         | 50.00%   | 85.29% | 68.23% |
+| test-helper.ts      | 58.17%         | 20.89%   | 50.00% | 59.50% |
 
-自動テストに加えて、以下の手動テストを実行することをお勧めします：
+以下の領域でさらなるテストカバレッジ向上が必要です：
 
-1. 拡張機能のインストールと有効化
-2. 各コマンドの実行と UI の確認
-3. エラーシナリオの手動検証
-4. 異なる OS 環境での動作確認
+1. **docker-installer.ts**
+   - 現在のカバレッジが13.28%と低く、重点的な改善が必要
+   - 各OS環境に対応したモックテストの追加
+   - インストールプロセスのシミュレーション強化
+
+2. **test-helper.ts**
+   - ブランチカバレッジが20.89%と低く、条件分岐のテスト強化が必要
+   - 各種エラーケースのシミュレーション追加
+   - モック関数のエッジケーステスト追加
+
+3. **Docker関連の操作のテスト強化**
+   - DockerのインストールとPreflight checkのテスト拡充
+   - Docker Composeファイル生成のテスト追加
+   
+4. **コンテナ関連の操作のテスト**
+   - コンテナのリセットと再起動のテスト
+   - コンテナ内でのコマンド実行のテスト

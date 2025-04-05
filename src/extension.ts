@@ -118,8 +118,8 @@ export async function preflightChecks(): Promise<boolean> {
         // Docker未インストールの場合、インストールを提案
         const installDocker = await showDockerInstallPrompt();
         if (installDocker) {
-            const installResult = await installDockerWithProgress();
-            return installResult;
+            // インストールを実行し、その結果を返す
+            return await installDockerWithProgress();
         }
         return false;
     }
@@ -246,13 +246,38 @@ export function showDockerPermissionError() {
 // This method is called when your extension is deactivated
 export function deactivate() {}
 
+/**
+ * リソースファイルのURIを取得する
+ * @param context VS Codeのエクステンションコンテキスト 
+ * @param relativePath リソースフォルダからの相対パス
+ * @returns リソースファイルのURI
+ */
+export function getResourceUri(context: vscode.ExtensionContext, relativePath: string): vscode.Uri {
+    return vscode.Uri.joinPath(context.extensionUri, 'resources', relativePath);
+}
+
 // .devcontainerフォルダをセットアップする関数
 export function setupDevContainer(context: vscode.ExtensionContext, targetPath: string) {
     try {
-        const sourcePath = path.join(context.extensionUri.fsPath, ".devcontainer");
-        copyFolderRecursiveSync(sourcePath, targetPath);
+        // .devcontainerディレクトリが存在しない場合は作成
+        if (!fs.existsSync(targetPath)) {
+            fs.mkdirSync(targetPath, { recursive: true });
+        }
+        
+        // devcontainer.json.templateからdevcontainer.jsonを生成
+        const devcontainerJsonTemplateUri = getResourceUri(context, 'templates/devcontainer_template/devcontainer.json.template');
+        const devcontainerJsonPath = path.join(targetPath, "devcontainer.json");
+        
+        try {
+            const template = fs.readFileSync(devcontainerJsonTemplateUri.fsPath, 'utf8');
+            fs.writeFileSync(devcontainerJsonPath, template);
+            vscode.window.showInformationMessage("devcontainer.jsonを作成しました");
+        } catch (err) {
+            throw new Error(`devcontainer.json.templateが見つかりません: ${parseErrorMessage(err)}`);
+        }
     } catch (error) {
         handleFileSystemError(error);
+        vscode.window.showErrorMessage(`devcontainer設定の作成中にエラーが発生しました: ${parseErrorMessage(error)}`);
     }
 }
 
@@ -269,21 +294,29 @@ export function openFolderInContainer(extensionStoragePath: string) {
 
 // Docker Composeファイルを生成する関数
 export async function generateDockerCompose(context: vscode.ExtensionContext, dockercomposeFilePath: string): Promise<boolean> {
-    const templatePath = path.join(context.extensionUri.fsPath, "docker-compose.templete.yml");
+    const templateUri = getResourceUri(context, 'templates/devcontainer_template/docker-compose.yml.template');
     
-    // 設定情報の収集
-    const config = await collectDockerComposeConfig();
-    if (!config) {
+    // テンプレートファイルの存在確認
+    try {
+        const templatePath = templateUri.fsPath;
+        
+        // 設定情報の収集
+        const config = await collectDockerComposeConfig();
+        if (!config) {
+            return false;
+        }
+        
+        // ファイルアクセス権の設定
+        if (!await setupFolderPermissions(config.projectFolder, config.cacheFolder)) {
+            return false;
+        }
+        
+        // テンプレートファイルの処理
+        return processTemplateFile(templatePath, dockercomposeFilePath, config);
+    } catch (error) {
+        vscode.window.showErrorMessage(`docker-compose.yml.templateが見つかりません: ${parseErrorMessage(error)}`);
         return false;
     }
-    
-    // ファイルアクセス権の設定
-    if (!await setupFolderPermissions(config.projectFolder, config.cacheFolder)) {
-        return false;
-    }
-    
-    // テンプレートファイルの処理
-    return processTemplateFile(templatePath, dockercomposeFilePath, config);
 }
 
 // Docker Compose設定情報を収集する関数
@@ -355,7 +388,13 @@ export function processTemplateFile(
         };
 
         // テンプレートファイルを読み込む
-        let template = fs.readFileSync(templatePath, 'utf8');
+        let template: string;
+        try {
+            template = fs.readFileSync(templatePath, 'utf8');
+        } catch (err) {
+            vscode.window.showErrorMessage(`テンプレートファイルの読み込みに失敗しました: ${parseErrorMessage(err)}`);
+            return false;
+        }
 
         // プレースホルダーを置換
         Object.entries(replacements).forEach(([key, value]) => {
@@ -363,11 +402,24 @@ export function processTemplateFile(
             template = template.replace(regex, value);
         });
 
-        fs.writeFileSync(outputPath, template.trim());
-        return true;  // 成功
+        // 出力ディレクトリの確保
+        const outputDir = path.dirname(outputPath);
+        if (!fs.existsSync(outputDir)) {
+            fs.mkdirSync(outputDir, { recursive: true });
+        }
+
+        // ファイル書き込み
+        try {
+            fs.writeFileSync(outputPath, template.trim());
+            vscode.window.showInformationMessage(`設定ファイルを生成しました: ${path.basename(outputPath)}`);
+            return true;  // 成功
+        } catch (err) {
+            vscode.window.showErrorMessage(`設定ファイルの書き込みに失敗しました: ${parseErrorMessage(err)}`);
+            return false;
+        }
     } catch (error) {
         handleFileSystemError(error);
-        vscode.window.showErrorMessage(`docker-compose.ymlの生成中にエラーが発生しました。`);
+        vscode.window.showErrorMessage(`設定ファイルの生成中にエラーが発生しました: ${parseErrorMessage(error)}`);
         return false;  // 失敗
     }
 }
@@ -557,3 +609,28 @@ export async function installDockerWithProgress(): Promise<boolean> {
         return false;
     }
 }
+
+// Export function for E2E testing
+/**
+ * 設定のバリデーションを行う（E2Eテスト用）
+ * @returns 設定が有効な場合はtrue、そうでない場合はfalse
+ */
+export async function validateSettings(): Promise<boolean> {
+  try {
+    const config = await collectDockerComposeConfig();
+    return config !== null;
+  } catch (error) {
+    vscode.window.showErrorMessage(`設定のバリデーションに失敗しました: ${parseErrorMessage(error)}`);
+    return false;
+  }
+}
+
+// E2Eテスト用のエクスポート
+// 統合テストで使用する関数をここでエクスポート
+export const forTesting = {
+  validateSettings,
+  collectDockerComposeConfig,
+  isDockerInstalled,
+  isRemoteContainersInstalled,
+  preflightChecks
+};

@@ -1,6 +1,6 @@
 import * as assert from 'assert';
 import * as sinon from 'sinon';
-import { mockVscode, resetAllMocks } from '../src/test-helper';
+import { mockVscode, resetAllMocks } from '../../src/test-helper';
 
 // VS Code モジュールを実際にモックする前に、元のモジュールを保存
 const originalRequire = require;
