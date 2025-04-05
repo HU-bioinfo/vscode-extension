@@ -118,8 +118,8 @@ export async function preflightChecks(): Promise<boolean> {
         // Docker未インストールの場合、インストールを提案
         const installDocker = await showDockerInstallPrompt();
         if (installDocker) {
-            const installResult = await installDockerWithProgress();
-            return installResult;
+            // インストールを実行し、その結果を返す
+            return await installDockerWithProgress();
         }
         return false;
     }
