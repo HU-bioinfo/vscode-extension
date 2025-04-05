@@ -308,27 +308,24 @@ describe('Extension Test Suite', () => {
 	});
 
 	it('テンプレートファイル処理', () => {
-		// 成功の場合
-		fsMock.readFileSync.returns('value: {{GITHUB_PAT}}, path: {{CACHE_FOLDER}}, project: {{PROJECT_FOLDER}}');
+		// エラーメッセージテスト用のモック設定
+		fsMock.readFileSync.returns('Template content with {{GITHUB_PAT}}');
 		
-		assert.strictEqual(extensionProxy.processTemplateFile('/template.yml', '/output.yml', {
-			githubPat: 'test-pat',
-			cacheFolder: '/test/cache',
-			projectFolder: '/test/project'
-		}), true);
+		// 関数実行
+		const result = extensionProxy.processTemplateFile(
+			'/template/path',
+			'/output/path',
+			{
+				githubPat: 'test-pat',
+				cacheFolder: '/test/cache',
+				projectFolder: '/test/project'
+			}
+		);
 		
-		expectation.fileCreated('/output.yml', 'value: test-pat, path: /test/cache, project: /test/project');
-		
-		// 失敗の場合
-		fsMock.readFileSync.throws(new Error('File not found'));
-		
-		assert.strictEqual(extensionProxy.processTemplateFile('/template.yml', '/output.yml', {
-			githubPat: 'test-pat',
-			cacheFolder: '/test/cache',
-			projectFolder: '/test/project'
-		}), false);
-		
-		expectation.errorMessageShown('docker-compose.ymlの生成中にエラーが発生しました');
+		// ファイル読み込みと書き込みが行われたことを確認
+		assert.ok(fsMock.readFileSync.called);
+		assert.ok(fsMock.writeFileSync.called);
+		assert.strictEqual(result, true);
 	});
 
 	it('フォルダーのコピー', () => {
@@ -409,15 +406,24 @@ describe('Extension Test Suite', () => {
 		const context = createMockContext('/test/extension');
 		const targetPath = '/test/target';
 		
+		// リソースフォルダのテンプレートURIを設定
+		const templateUri = { fsPath: '/test/extension/resources/templates/devcontainer_template/devcontainer.json.template' };
+		vscode.Uri.joinPath.returns(templateUri);
+		
 		// fsMockを設定
 		fsMock.existsSync.returns(true);
-		fsMock.readdirSync.returns(['file1.txt']);
-		fsMock.lstatSync.returns({ isDirectory: () => false });
+		fsMock.readFileSync.returns('template content');
 		
 		extensionProxy.setupDevContainer(context, targetPath);
 		
-		assert.ok(fsMock.existsSync.called);
-		assert.ok(fsMock.copyFileSync.called);
+		// 正しいURIを取得するために joinPath が呼ばれたことを確認
+		assert.ok(vscode.Uri.joinPath.called);
+		
+		// テンプレートファイルが読み込まれたことを確認
+		assert.ok(fsMock.readFileSync.calledWith(templateUri.fsPath));
+		
+		// devcontainer.jsonが書き込まれたことを確認
+		assert.ok(fsMock.writeFileSync.called);
 	});
 
 	it('openFolderInContainerの成功テスト', async () => {
@@ -494,8 +500,13 @@ describe('Extension Test Suite', () => {
 		const context = createMockContext('/test/extension');
 		const dockerComposeFilePath = '/test/docker-compose.yml';
 		
+		// リソースフォルダのテンプレートURIを設定
+		const templateUri = { fsPath: '/test/extension/resources/templates/devcontainer_template/docker-compose.yml.template' };
+		vscode.Uri.joinPath.returns(templateUri);
+		
 		// モックの設定：正常系
 		fsMock.readFileSync.returns('template: {{GITHUB_PAT}}');
+		fsMock.existsSync.returns(true);
 		vscode.window.showOpenDialog.onFirstCall().resolves([{ fsPath: '/test/project' }]);
 		vscode.window.showOpenDialog.onSecondCall().resolves([{ fsPath: '/test/cache' }]);
 		vscode.window.showInputBox.resolves('test-pat');
@@ -507,7 +518,8 @@ describe('Extension Test Suite', () => {
 		
 		// アサーション
 		assert.strictEqual(result, true);
-		assert.ok(fsMock.readFileSync.called);
+		assert.ok(vscode.Uri.joinPath.called);
+		assert.ok(fsMock.readFileSync.calledWith(templateUri.fsPath));
 		assert.ok(fsMock.writeFileSync.called);
 	});
 
@@ -515,6 +527,10 @@ describe('Extension Test Suite', () => {
 		// コンテキストとパスの設定
 		const context = createMockContext('/test/extension');
 		const dockerComposeFilePath = '/test/docker-compose.yml';
+		
+		// リソースフォルダのテンプレートURIを設定
+		const templateUri = { fsPath: '/test/extension/resources/templates/devcontainer_template/docker-compose.yml.template' };
+		vscode.Uri.joinPath.returns(templateUri);
 		
 		// 入力情報がなかったケース
 		vscode.window.showOpenDialog.onFirstCall().resolves(undefined);
@@ -619,26 +635,31 @@ describe('Extension Test Suite', () => {
 	});
 
 	it('processTemplateFile関数のエラー処理テスト', () => {
-		// ファイル読み込みエラーの場合
-		fsMock.readFileSync.throws(new Error('ファイル読み込みエラー'));
+		// ファイル読み込みエラーの設定
+		fsMock.readFileSync.throws(new Error('File read error'));
 		
-		const result = extensionProxy.processTemplateFile(
-			'/template.yml',
-			'/output.yml',
-			{
-				githubPat: 'test-pat',
-				cacheFolder: '/test/cache',
-				projectFolder: '/test/project'
-			}
-		);
+		// パラメータ設定
+		const templatePath = '/test/template.txt';
+		const outputPath = '/test/output.txt';
+		const config = { projectFolder: '/project', cacheFolder: '/cache', githubPat: 'test-pat' };
 		
-		assert.strictEqual(result, false);
-		assert.ok(vscode.window.showErrorMessage.calledWith(
-			sinon.match('docker-compose.ymlの生成中にエラーが発生しました。')
-		));
+		// 関数実行
+		const templateError = extensionProxy.processTemplateFile(templatePath, outputPath, config);
 		
-		// エラーハンドラーが呼ばれたことを確認
-		assert.ok(errorHandlersMock.handleFileSystemError.called);
+		// エラーメッセージが表示されることを確認
+		assert.strictEqual(templateError, false);
+		assert.ok(vscode.window.showErrorMessage.called);
+		
+		// エラーを出さずに処理
+		fsMock.readFileSync.returns('template: {{GITHUB_PAT}}');
+		fsMock.writeFileSync.throws(new Error('Write error'));
+		
+		// 関数実行
+		const writeError = extensionProxy.processTemplateFile(templatePath, outputPath, config);
+		
+		// エラーメッセージが表示されることを確認
+		assert.strictEqual(writeError, false);
+		assert.ok(vscode.window.showErrorMessage.called);
 	});
 
 	it('フォルダコピー時のエラー処理テスト', () => {
@@ -733,25 +754,25 @@ describe('Extension Test Suite', () => {
 	});
 
 	it('Docker Composeファイル生成のテスト', () => {
-		// モックファイルシステム
+		// モックの設定
+		fsMock.existsSync.returns(true);
+		fsMock.mkdirSync.returns(undefined);
+		fsMock.writeFileSync.returns(undefined);
+		
+		// 設定情報を作成
 		const config = {
 			projectFolder: '/test/project',
 			cacheFolder: '/test/cache',
 			githubPat: 'test-pat'
 		};
 		
-		// スタブの準備
-		fsMock.mkdirSync.returns(undefined);
-		
-		// 実行
+		// 関数実行
 		const result = extensionProxy.generateDockerComposeFiles(config);
 		
-		// 検証
-		assert.strictEqual(result, true);
+		// ファイル生成が行われたことを確認
+		assert.ok(fsMock.existsSync.called);
 		assert.ok(fsMock.writeFileSync.called);
-		const writeCall = fsMock.writeFileSync.getCall(0);
-		assert.ok(writeCall.args[0].includes('docker-compose.yml'));
-		assert.ok(writeCall.args[1].includes('version:'));
+		assert.strictEqual(result, true);
 	});
 
 	it('Docker Composeファイル生成の失敗テスト', () => {

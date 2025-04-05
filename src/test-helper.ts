@@ -28,6 +28,7 @@ interface VSCodeNamespace {
     Uri: {
         file: sinon.SinonStub;
         parse: sinon.SinonStub;
+        joinPath: sinon.SinonStub;
     };
     ExtensionContext: any;
 }
@@ -55,7 +56,8 @@ const vscodeModule: VSCodeNamespace = process.env.NODE_ENV !== 'test'
         },
         Uri: {
             file: sinon.stub(),
-            parse: sinon.stub()
+            parse: sinon.stub(),
+            joinPath: sinon.stub()
         },
         ExtensionContext: {}
     };

@@ -1,0 +1,12 @@
+services:
+  container:
+    image: kokeh/hu_bioinfo:stable
+    environment:
+      - DISABLE_AUTH=true
+      - GITHUB_PAT={{GITHUB_PAT}}
+      - CACHE_DIR="/home/user/cache"
+      - PROJ_DIR="/home/user/proj"
+    volumes:
+      - {{CACHE_FOLDER}}:/home/user/cache
+      - {{PROJECT_FOLDER}}:/home/user/proj
+    command: sleep infinity 
