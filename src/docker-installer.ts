@@ -168,7 +168,7 @@ export async function installDocker(osInfo: OSInfo): Promise<DockerOperationResu
             title: 'Dockerをインストール中...',
             cancellable: false
         },
-        async (progress) => {
+        async (progress: Progress) => {
             progress.report({ increment: 0, message: 'インストールを準備中...' });
             
             try {

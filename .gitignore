@@ -10,3 +10,7 @@ gwd
 *.sif
 *.env
 *.vsix
+
+# テストカバレッジ
+.nyc_output
+coverage/
