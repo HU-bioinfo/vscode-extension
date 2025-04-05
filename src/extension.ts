@@ -8,6 +8,7 @@ import {
     parseErrorMessage, isDockerError, handleDockerError,
     validateInput, handleFileSystemError
 } from './error-handlers';
+import * as dockerInstaller from './docker-installer';
 
 const execPromise = promisify(exec);
 
@@ -114,7 +115,12 @@ export async function preflightChecks(): Promise<boolean> {
 
     // Dockerがインストールされているか確認
     if (!await isDockerInstalled()) {
-        showDockerNotInstalledError();
+        // Docker未インストールの場合、インストールを提案
+        const installDocker = await showDockerInstallPrompt();
+        if (installDocker) {
+            const installResult = await installDockerWithProgress();
+            return installResult;
+        }
         return false;
     }
 
@@ -507,5 +513,47 @@ export async function resetWorkEnvConfig(): Promise<void> {
         vscode.window.showInformationMessage("設定をリセットしました。");
     } catch (error) {
         vscode.window.showErrorMessage(`設定のリセットに失敗しました: ${parseErrorMessage(error)}`);
+    }
+}
+
+// Dockerがインストールされていない場合のプロンプト表示
+export async function showDockerInstallPrompt(): Promise<boolean> {
+    const message = 'Dockerがインストールされていません。自動的にインストールしますか？';
+    const installButton = 'インストールする';
+    const cancelButton = 'キャンセル';
+    
+    const selection = await vscode.window.showInformationMessage(
+        message, 
+        { modal: true },
+        installButton, 
+        cancelButton
+    );
+    
+    return selection === installButton;
+}
+
+// Dockerインストールの実行
+export async function installDockerWithProgress(): Promise<boolean> {
+    // OS情報の検出
+    const osInfo = dockerInstaller.detectOS();
+    
+    // Linuxの場合はディストリビューション情報も取得
+    if (osInfo.platform === 'linux') {
+        osInfo.distro = await dockerInstaller.detectLinuxDistro();
+    }
+    
+    // Dockerインストール実行
+    const result = await dockerInstaller.installDocker(osInfo);
+    
+    if (result.success) {
+        vscode.window.showInformationMessage(result.message);
+        return true;
+    } else {
+        if (result.details) {
+            vscode.window.showErrorMessage(`${result.message}: ${result.details}`);
+        } else {
+            vscode.window.showErrorMessage(result.message);
+        }
+        return false;
     }
 }

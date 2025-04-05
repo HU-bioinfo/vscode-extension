@@ -8,6 +8,8 @@ import {
 	mockRemoteContainersExtension, mockProjectFolderSelection,
 	mockCacheFolderSelection, mockGitHubPatInput
 } from '../src/test-helper';
+import * as extension from '../src/extension';
+import * as dockerInstaller from '../src/docker-installer';
 
 // テスト用のモック
 const errorHandlersMock = {
@@ -19,7 +21,7 @@ const errorHandlersMock = {
 };
 
 // テスト時には実際のvscodeをモックに置き換える
-const extension = proxyquire.noCallThru().load('../src/extension', {
+const extensionProxy = proxyquire.noCallThru().load('../src/extension', {
 	'vscode': vscode,
 	'child_process': { exec: childProcess.exec },
 	'fs': fsMock,
@@ -51,7 +53,7 @@ describe('Extension Test Suite', () => {
 		const context = createMockContext();
 		
 		// アクティベーション関数を実行
-		extension.activate(context);
+		extensionProxy.activate(context);
 		
 		// コマンド登録が呼び出されたことを確認
 		assert.ok(vscode.commands.registerCommand.calledWith('work-env.start-work-env'), 
@@ -71,17 +73,17 @@ describe('Extension Test Suite', () => {
 		
 		// 拡張機能がインストールされていない場合
 		vscode.extensions.getExtension.withArgs('ms-vscode-remote.remote-containers').returns(undefined);
-		const notInstalledResult = await extension.isRemoteContainersInstalled();
+		const notInstalledResult = await extensionProxy.isRemoteContainersInstalled();
 		assert.strictEqual(notInstalledResult, false);
 		
 		// 拡張機能がインストールされている場合
 		vscode.extensions.getExtension.withArgs('ms-vscode-remote.remote-containers').returns({ id: 'ms-vscode-remote.remote-containers' });
-		const installedResult = await extension.isRemoteContainersInstalled();
+		const installedResult = await extensionProxy.isRemoteContainersInstalled();
 		assert.strictEqual(installedResult, true);
 	});
 
 	it('Remote Containers拡張機能エラーメッセージの表示', async () => {
-		extension.showRemoteContainersNotInstalledError();
+		extensionProxy.showRemoteContainersNotInstalledError();
 		
 		assert.ok(vscode.window.showErrorMessage.calledOnce);
 		assert.ok(vscode.window.showErrorMessage.firstCall.args[0].includes('Remote Containers拡張機能がインストールされていません'));
@@ -104,7 +106,7 @@ describe('Extension Test Suite', () => {
 			};
 		});
 		
-		const successResult = await extension.isDockerInstalled();
+		const successResult = await extensionProxy.isDockerInstalled();
 		assert.strictEqual(successResult, true);
 		
 		// 状態をリセットしてから次のケースをテスト
@@ -123,7 +125,7 @@ describe('Extension Test Suite', () => {
 			};
 		});
 		
-		const failureResult = await extension.isDockerInstalled();
+		const failureResult = await extensionProxy.isDockerInstalled();
 		assert.strictEqual(failureResult, false);
 	});
 
@@ -143,7 +145,7 @@ describe('Extension Test Suite', () => {
 				stderr: { on: sinon.stub() }
 			};
 		});
-		assert.strictEqual(await extension.checkDockerPermissions(), true);
+		assert.strictEqual(await extensionProxy.checkDockerPermissions(), true);
 		
 		// 状態をリセットしてから次のケースをテスト
 		sinon.restore();
@@ -160,7 +162,7 @@ describe('Extension Test Suite', () => {
 				stderr: { on: sinon.stub() }
 			};
 		});
-		assert.strictEqual(await extension.checkDockerPermissions(), false);
+		assert.strictEqual(await extensionProxy.checkDockerPermissions(), false);
 		
 		// 状態をリセットしてから次のケースをテスト
 		sinon.restore();
@@ -177,7 +179,7 @@ describe('Extension Test Suite', () => {
 				stderr: { on: sinon.stub() }
 			};
 		});
-		assert.strictEqual(await extension.checkDockerPermissions(), false);
+		assert.strictEqual(await extensionProxy.checkDockerPermissions(), false);
 	});
 
 	it('事前チェック - Dockerがインストールされていない場合', async () => {
@@ -186,13 +188,13 @@ describe('Extension Test Suite', () => {
 		resetMocks();
 		
 		// 元の関数を保存
-		const originalPreflightChecks = extension.preflightChecks;
+		const originalPreflightChecks = extensionProxy.preflightChecks;
 		
 		try {
 			// preflightChecks関数を一時的に置き換える
-			extension.preflightChecks = async function() {
+			extensionProxy.preflightChecks = async function() {
 				// カスタム実装：Dockerがインストールされていない場合をシミュレート
-				extension.showDockerNotInstalledError();
+				extensionProxy.showDockerNotInstalledError();
 				return false;
 			};
 			
@@ -200,14 +202,14 @@ describe('Extension Test Suite', () => {
 			vscode.window.showErrorMessage = sinon.stub().resolves(undefined);
 			
 			// テスト実行
-			const result = await extension.preflightChecks();
+			const result = await extensionProxy.preflightChecks();
 			
 			// アサーション
 			assert.strictEqual(result, false, 'Dockerがインストールされていない場合、falseを返すべき');
 			assert.ok(vscode.window.showErrorMessage.called, 'エラーメッセージが表示されるべき');
 		} finally {
 			// 元の関数を復元
-			extension.preflightChecks = originalPreflightChecks;
+			extensionProxy.preflightChecks = originalPreflightChecks;
 		}
 	});
 
@@ -233,7 +235,7 @@ describe('Extension Test Suite', () => {
 		});
 		
 		// 成功ケースのテスト
-		const successResult = await extension.pullDockerImage('test-image');
+		const successResult = await extensionProxy.pullDockerImage('test-image');
 		assert.strictEqual(successResult, true);
 		assert.ok(vscode.window.showInformationMessage.calledWith(
 			sinon.match('Dockerイメージ')
@@ -246,21 +248,21 @@ describe('Extension Test Suite', () => {
 		resetMocks();
 		
 		// 元の関数を保存
-		const originalRemoveExistingContainers = extension.removeExistingContainers;
+		const originalRemoveExistingContainers = extensionProxy.removeExistingContainers;
 		
 		try {
 			// 関数をオーバーライドして必ずtrueを返すようにする
-			extension.removeExistingContainers = sinon.stub().resolves(true);
+			extensionProxy.removeExistingContainers = sinon.stub().resolves(true);
 			
 			// 関数を実行
-			const result = await extension.removeExistingContainers(['test1', 'test2']);
+			const result = await extensionProxy.removeExistingContainers(['test1', 'test2']);
 			
 			// テスト結果を検証
 			assert.strictEqual(result, true, 'trueを返すべき');
-			assert.ok(extension.removeExistingContainers.called, '関数が呼ばれるべき');
+			assert.ok(extensionProxy.removeExistingContainers.called, '関数が呼ばれるべき');
 		} finally {
 			// 元の関数を復元
-			extension.removeExistingContainers = originalRemoveExistingContainers;
+			extensionProxy.removeExistingContainers = originalRemoveExistingContainers;
 		}
 	});
 
@@ -273,7 +275,7 @@ describe('Extension Test Suite', () => {
 		vscode.window.showOpenDialog.onSecondCall().resolves([{ fsPath: '/test/cache' }]);
 		vscode.window.showInputBox.resolves('test-pat');
 		
-		const result = await extension.collectDockerComposeConfig();
+		const result = await extensionProxy.collectDockerComposeConfig();
 		assert.deepStrictEqual(result, {
 			projectFolder: '/test/project',
 			cacheFolder: '/test/cache',
@@ -284,7 +286,7 @@ describe('Extension Test Suite', () => {
 		resetMocks();
 		vscode.window.showOpenDialog.onFirstCall().resolves(undefined);
 		
-		assert.strictEqual(await extension.collectDockerComposeConfig(), null);
+		assert.strictEqual(await extensionProxy.collectDockerComposeConfig(), null);
 		expectation.errorMessageShown('プロジェクトフォルダが選択されていません');
 		
 		// キャッシュフォルダが選択されなかった場合
@@ -292,7 +294,7 @@ describe('Extension Test Suite', () => {
 		vscode.window.showOpenDialog.onFirstCall().resolves([{ fsPath: '/test/project' }]);
 		vscode.window.showOpenDialog.onSecondCall().resolves(undefined);
 		
-		assert.strictEqual(await extension.collectDockerComposeConfig(), null);
+		assert.strictEqual(await extensionProxy.collectDockerComposeConfig(), null);
 		expectation.errorMessageShown('キャッシュフォルダが選択されていません');
 		
 		// GitHub PATが入力されなかった場合
@@ -301,7 +303,7 @@ describe('Extension Test Suite', () => {
 		vscode.window.showOpenDialog.onSecondCall().resolves([{ fsPath: '/test/cache' }]);
 		vscode.window.showInputBox.resolves(undefined);
 		
-		assert.strictEqual(await extension.collectDockerComposeConfig(), null);
+		assert.strictEqual(await extensionProxy.collectDockerComposeConfig(), null);
 		expectation.errorMessageShown('GitHub PATが必要です');
 	});
 
@@ -309,7 +311,7 @@ describe('Extension Test Suite', () => {
 		// 成功の場合
 		fsMock.readFileSync.returns('value: {{GITHUB_PAT}}, path: {{CACHE_FOLDER}}, project: {{PROJECT_FOLDER}}');
 		
-		assert.strictEqual(extension.processTemplateFile('/template.yml', '/output.yml', {
+		assert.strictEqual(extensionProxy.processTemplateFile('/template.yml', '/output.yml', {
 			githubPat: 'test-pat',
 			cacheFolder: '/test/cache',
 			projectFolder: '/test/project'
@@ -320,7 +322,7 @@ describe('Extension Test Suite', () => {
 		// 失敗の場合
 		fsMock.readFileSync.throws(new Error('File not found'));
 		
-		assert.strictEqual(extension.processTemplateFile('/template.yml', '/output.yml', {
+		assert.strictEqual(extensionProxy.processTemplateFile('/template.yml', '/output.yml', {
 			githubPat: 'test-pat',
 			cacheFolder: '/test/cache',
 			projectFolder: '/test/project'
@@ -368,7 +370,7 @@ describe('Extension Test Suite', () => {
 		mockFs.lstatSync.withArgs(path.join(source, subdir, file2)).returns(fileStats);
 		
 		// 関数実行
-		extension.copyFolderRecursiveSync(source, target, mockFs);
+		extensionProxy.copyFolderRecursiveSync(source, target, mockFs);
 		
 		// 検証
 		sinon.assert.called(mockFs.existsSync);
@@ -380,7 +382,7 @@ describe('Extension Test Suite', () => {
 
 	it('deactivate関数のテスト', () => {
 		// deactivateは何もしない関数だが、カバレッジのために呼び出す
-		extension.deactivate();
+		extensionProxy.deactivate();
 		assert.ok(true, 'deactivate function called');
 	});
 
@@ -391,14 +393,14 @@ describe('Extension Test Suite', () => {
 			sendText: sinon.stub()
 		};
 		
-		const result = await extension.setupFolderPermissions('/test/project', '/test/cache');
+		const result = await extensionProxy.setupFolderPermissions('/test/project', '/test/cache');
 		assert.strictEqual(result, true);
 		assert.ok(vscode.commands.executeCommand.calledWith('workbench.action.terminal.new'));
 		assert.ok(vscode.window.activeTerminal.sendText.calledTwice);
 		
 		// 失敗の場合
 		vscode.commands.executeCommand.rejects(new Error('terminal error'));
-		const failResult = await extension.setupFolderPermissions('/test/project', '/test/cache');
+		const failResult = await extensionProxy.setupFolderPermissions('/test/project', '/test/cache');
 		assert.strictEqual(failResult, false);
 		assert.ok(vscode.window.showErrorMessage.called);
 	});
@@ -412,7 +414,7 @@ describe('Extension Test Suite', () => {
 		fsMock.readdirSync.returns(['file1.txt']);
 		fsMock.lstatSync.returns({ isDirectory: () => false });
 		
-		extension.setupDevContainer(context, targetPath);
+		extensionProxy.setupDevContainer(context, targetPath);
 		
 		assert.ok(fsMock.existsSync.called);
 		assert.ok(fsMock.copyFileSync.called);
@@ -422,7 +424,7 @@ describe('Extension Test Suite', () => {
 		vscode.commands.executeCommand.withArgs('remote-containers.openFolder').resolves();
 		vscode.Uri.file.returns({ fsPath: '/test/path' });
 		
-		extension.openFolderInContainer('/test/path');
+		extensionProxy.openFolderInContainer('/test/path');
 		
 		assert.ok(vscode.Uri.file.calledWith('/test/path'));
 		assert.ok(vscode.commands.executeCommand.calledWith('remote-containers.openFolder'));
@@ -433,7 +435,7 @@ describe('Extension Test Suite', () => {
 		vscode.commands.executeCommand.withArgs('remote-containers.openFolder').rejects(error);
 		vscode.Uri.file.returns({ fsPath: '/test/path' });
 		
-		extension.openFolderInContainer('/test/path');
+		extensionProxy.openFolderInContainer('/test/path');
 		
 		// テストは非同期ですが、エラーハンドリングは内部で行われるため、
 		// 実際のアサーションは行わず、呼び出しをテストするだけ
@@ -459,11 +461,11 @@ describe('Extension Test Suite', () => {
 		});
 		
 		// docker pull コマンドのテスト
-		assert.strictEqual(await extension.pullDockerImage('test-image'), true);
+		assert.strictEqual(await extensionProxy.pullDockerImage('test-image'), true);
 		
 		// コンテナ削除のテスト
 		assert.strictEqual(
-			await extension.removeExistingContainers(['test-container']), 
+			await extensionProxy.removeExistingContainers(['test-container']), 
 			true
 		);
 	});
@@ -481,7 +483,7 @@ describe('Extension Test Suite', () => {
 		errorHandlersMock.handleDockerError = sinon.stub();
 		
 		// isDockerErrorとhandleDockerErrorが適切に呼ばれることを直接テスト
-		extension.handleDockerError ? extension.handleDockerError(testError) : errorHandlersMock.handleDockerError(testError);
+		extensionProxy.handleDockerError ? extensionProxy.handleDockerError(testError) : errorHandlersMock.handleDockerError(testError);
 		
 		// 手動でアサーションを行う
 		assert.ok(true, 'テストが実行されるべき');
@@ -501,7 +503,7 @@ describe('Extension Test Suite', () => {
 		vscode.window.activeTerminal = { sendText: sinon.stub() };
 		
 		// 関数実行
-		const result = await extension.generateDockerCompose(context, dockerComposeFilePath);
+		const result = await extensionProxy.generateDockerCompose(context, dockerComposeFilePath);
 		
 		// アサーション
 		assert.strictEqual(result, true);
@@ -516,7 +518,7 @@ describe('Extension Test Suite', () => {
 		
 		// 入力情報がなかったケース
 		vscode.window.showOpenDialog.onFirstCall().resolves(undefined);
-		const noInputResult = await extension.generateDockerCompose(context, dockerComposeFilePath);
+		const noInputResult = await extensionProxy.generateDockerCompose(context, dockerComposeFilePath);
 		assert.strictEqual(noInputResult, false);
 		
 		// フォルダ権限設定のエラーケース
@@ -525,7 +527,7 @@ describe('Extension Test Suite', () => {
 		vscode.window.showInputBox.resolves('test-pat');
 		vscode.commands.executeCommand.rejects(new Error('Terminal error'));
 		
-		const permissionError = await extension.generateDockerCompose(context, dockerComposeFilePath);
+		const permissionError = await extensionProxy.generateDockerCompose(context, dockerComposeFilePath);
 		assert.strictEqual(permissionError, false);
 		
 		// テンプレート処理のエラーケース
@@ -533,7 +535,7 @@ describe('Extension Test Suite', () => {
 		vscode.window.activeTerminal = { sendText: sinon.stub() };
 		fsMock.readFileSync.throws(new Error('File read error'));
 		
-		const templateError = await extension.generateDockerCompose(context, dockerComposeFilePath);
+		const templateError = await extensionProxy.generateDockerCompose(context, dockerComposeFilePath);
 		assert.strictEqual(templateError, false);
 	});
 	
@@ -546,18 +548,18 @@ describe('Extension Test Suite', () => {
 		errorHandlersMock.isDockerError.returns(true);
 		
 		// pullDockerImage関数をスタブ化
-		const originalPullDockerImage = extension.pullDockerImage;
-		extension.pullDockerImage = sinon.stub().rejects(mockError);
+		const originalPullDockerImage = extensionProxy.pullDockerImage;
+		extensionProxy.pullDockerImage = sinon.stub().rejects(mockError);
 		
 		// アクティベーション関数を実行（エラーが発生するはず）
-		extension.activate(context);
+		extensionProxy.activate(context);
 		
 		// activateはpromiseを返さないため、直接アサーションは行わず、
 		// エラーハンドリング関数が呼ばれることを確認
-		extension.pullDockerImage.rejects(mockError);
+		extensionProxy.pullDockerImage.rejects(mockError);
 		
 		// 元の関数を復元
-		extension.pullDockerImage = originalPullDockerImage;
+		extensionProxy.pullDockerImage = originalPullDockerImage;
 	});
 	
 	it('activate & deactivate関数での追加カバレッジ', () => {
@@ -568,10 +570,10 @@ describe('Extension Test Suite', () => {
 		fsMock.existsSync.returns(false);
 		
 		// アクティベーション関数を実行
-		extension.activate(context);
+		extensionProxy.activate(context);
 		
 		// deactivate関数も実行
-		extension.deactivate();
+		extensionProxy.deactivate();
 		
 		// アサーション
 		assert.strictEqual(vscode.commands.registerCommand.callCount, 2);
@@ -588,7 +590,7 @@ describe('Extension Test Suite', () => {
 
 			// LinuxでのDockerパーミッションエラー
 			Object.defineProperty(process, 'platform', { value: 'linux' });
-			extension.showDockerPermissionError();
+			extensionProxy.showDockerPermissionError();
 			
 			// エラーメッセージが表示されることを確認
 			assert.ok(vscode.window.showErrorMessage.called);
@@ -599,7 +601,7 @@ describe('Extension Test Suite', () => {
 			
 			// macOSでのDockerパーミッションエラー
 			Object.defineProperty(process, 'platform', { value: 'darwin' });
-			extension.showDockerPermissionError();
+			extensionProxy.showDockerPermissionError();
 			assert.ok(vscode.window.showErrorMessage.called);
 			
 			// テスト用にスタブを再設定
@@ -608,7 +610,7 @@ describe('Extension Test Suite', () => {
 			
 			// Windowsでのパーミッションエラー
 			Object.defineProperty(process, 'platform', { value: 'win32' });
-			extension.showDockerPermissionError();
+			extensionProxy.showDockerPermissionError();
 			assert.ok(vscode.window.showErrorMessage.called);
 		} finally {
 			// テスト後にプラットフォーム設定を元に戻す
@@ -620,7 +622,7 @@ describe('Extension Test Suite', () => {
 		// ファイル読み込みエラーの場合
 		fsMock.readFileSync.throws(new Error('ファイル読み込みエラー'));
 		
-		const result = extension.processTemplateFile(
+		const result = extensionProxy.processTemplateFile(
 			'/template.yml',
 			'/output.yml',
 			{
@@ -649,7 +651,7 @@ describe('Extension Test Suite', () => {
 			copyFileSync: sinon.stub()
 		};
 		
-		extension.copyFolderRecursiveSync('/source', '/target', mockFsCopy);
+		extensionProxy.copyFolderRecursiveSync('/source', '/target', mockFsCopy);
 		
 		// コピー元が見つからない場合は早期リターンして何も実行されない
 		assert.ok(mockFsCopy.existsSync.calledWith('/source'));
@@ -660,7 +662,7 @@ describe('Extension Test Suite', () => {
 		mockFsCopy.existsSync.withArgs('/source').returns(true);
 		mockFsCopy.existsSync.withArgs('/target').returns(true);
 		
-		extension.copyFolderRecursiveSync('/source', '/target', mockFsCopy);
+		extensionProxy.copyFolderRecursiveSync('/source', '/target', mockFsCopy);
 		
 		// ターゲットフォルダは作成されないが、ファイル一覧は取得される
 		assert.strictEqual(mockFsCopy.mkdirSync.called, false);
@@ -669,7 +671,7 @@ describe('Extension Test Suite', () => {
 		// エラーが発生する場合
 		mockFsCopy.readdirSync.throws(new Error('アクセス権限エラー'));
 		
-		extension.copyFolderRecursiveSync('/source', '/target', mockFsCopy);
+		extensionProxy.copyFolderRecursiveSync('/source', '/target', mockFsCopy);
 		
 		// エラーハンドラーが呼ばれたことを確認
 		assert.ok(errorHandlersMock.handleFileSystemError.called);
@@ -689,7 +691,7 @@ describe('Extension Test Suite', () => {
 		
 		// Linuxの場合
 		Object.defineProperty(process, 'platform', { value: 'linux' });
-		extension.showDockerPermissionError();
+		extensionProxy.showDockerPermissionError();
 		assert.ok(mockErrorMessage.calledWith(
 			sinon.match('Dockerの実行権限がありません')
 		));
@@ -711,7 +713,7 @@ describe('Extension Test Suite', () => {
 		vscode.env.openExternal = sinon.stub().resolves(true);
 		
 		// 関数実行
-		await extension.showDockerNotInstalledError();
+		await extensionProxy.showDockerNotInstalledError();
 		
 		// 検証
 		assert.ok(vscode.window.showErrorMessage.called, 'エラーメッセージが表示されるべき');
@@ -722,7 +724,7 @@ describe('Extension Test Suite', () => {
 		// インストールボタンのクリックをシミュレート
 		vscode.window.showErrorMessage.resolves('拡張機能をインストール');
 		
-		await extension.showRemoteContainersNotInstalledError();
+		await extensionProxy.showRemoteContainersNotInstalledError();
 		
 		assert.ok(vscode.window.showErrorMessage.calledWith(
 			sinon.match('Remote Containers拡張機能がインストールされていません')
@@ -742,7 +744,7 @@ describe('Extension Test Suite', () => {
 		fsMock.mkdirSync.returns(undefined);
 		
 		// 実行
-		const result = extension.generateDockerComposeFiles(config);
+		const result = extensionProxy.generateDockerComposeFiles(config);
 		
 		// 検証
 		assert.strictEqual(result, true);
@@ -769,7 +771,7 @@ describe('Extension Test Suite', () => {
 		fsMock.writeFileSync.throws(new Error('Permission denied'));
 		
 		// 実行
-		const result = extension.generateDockerComposeFiles(config);
+		const result = extensionProxy.generateDockerComposeFiles(config);
 		
 		// 検証
 		assert.strictEqual(result, false);
@@ -781,7 +783,7 @@ describe('Extension Test Suite', () => {
 		mockDockerSuccess();
 		
 		// 正常実行のシミュレーション
-		await extension.startWorkEnv();
+		await extensionProxy.startWorkEnv();
 		
 		// 拡張チェックが行われたことを確認
 		assert.ok(vscode.extensions.getExtension.called);
@@ -811,7 +813,7 @@ describe('Extension Test Suite', () => {
 		mockFsCopy.existsSync.withArgs('/target').returns(false);
 		
 		// 実行してテスト
-		extension.copyFolderRecursiveSync('/source', '/target', mockFsCopy);
+		extensionProxy.copyFolderRecursiveSync('/source', '/target', mockFsCopy);
 		
 		// existsSyncが呼ばれたことを確認
 		assert.ok(mockFsCopy.existsSync.calledWith('/source'), 'existsSyncが/sourceで呼ばれるべき');
@@ -830,18 +832,18 @@ describe('Extension Test Suite', () => {
 		vscode.window.showInformationMessage = sinon.stub().resolves('OK');
 		
 		// resetWorkEnvConfig関数が定義されているか確認
-		if (typeof extension.resetWorkEnvConfig === 'function') {
+		if (typeof extensionProxy.resetWorkEnvConfig === 'function') {
 			// 元の関数を保存
-			const originalResetWorkEnvConfig = extension.resetWorkEnvConfig;
+			const originalResetWorkEnvConfig = extensionProxy.resetWorkEnvConfig;
 			
 			try {
 				// resetWorkEnvConfig関数をオーバーライドして、成功したときに必ず情報メッセージを表示するようにする
-				extension.resetWorkEnvConfig = async () => {
+				extensionProxy.resetWorkEnvConfig = async () => {
 					vscode.window.showInformationMessage("設定をリセットしました。");
 				};
 				
 				// 関数を実行
-				await extension.resetWorkEnvConfig();
+				await extensionProxy.resetWorkEnvConfig();
 				
 				// 情報メッセージが表示されたことを確認
 				assert.ok(
@@ -850,11 +852,153 @@ describe('Extension Test Suite', () => {
 				);
 			} finally {
 				// 元の関数を復元
-				extension.resetWorkEnvConfig = originalResetWorkEnvConfig;
+				extensionProxy.resetWorkEnvConfig = originalResetWorkEnvConfig;
 			}
 		} else {
 			console.log('resetWorkEnvConfig not found, skipping test');
 			this.skip();
 		}
+	});
+
+	it('Dockerがない場合にインストールプロンプトが表示されること', async function() {
+		// Docker未インストール
+		const isDockerInstalledStub = sinon.stub(extensionProxy, 'isDockerInstalled').resolves(false);
+		
+		// インストールプロンプトのモック
+		const promptStub = sinon.stub(extensionProxy, 'showDockerInstallPrompt').resolves(false);
+		
+		const result = await extensionProxy.preflightChecks();
+		
+		assert.strictEqual(result, false);
+		assert.ok(promptStub.calledOnce);
+		
+		isDockerInstalledStub.restore();
+		promptStub.restore();
+	});
+
+	it('インストールプロンプトでキャンセルを選択した場合は処理を中断すること', async function() {
+		// Docker未インストール
+		const isDockerInstalledStub = sinon.stub(extensionProxy, 'isDockerInstalled').resolves(false);
+		
+		// インストールプロンプトでキャンセル
+		const promptStub = sinon.stub(extensionProxy, 'showDockerInstallPrompt').resolves(false);
+		
+		const result = await extensionProxy.preflightChecks();
+		
+		assert.strictEqual(result, false);
+		assert.ok(promptStub.calledOnce);
+		
+		isDockerInstalledStub.restore();
+		promptStub.restore();
+	});
+
+	it('インストールを実行した場合はその結果を返すこと', async function() {
+		// Docker未インストール
+		const isDockerInstalledStub = sinon.stub(extensionProxy, 'isDockerInstalled').resolves(false);
+		
+		// インストールプロンプトで「はい」を選択
+		const promptStub = sinon.stub(extensionProxy, 'showDockerInstallPrompt').resolves(true);
+		
+		// インストール成功
+		const installStub = sinon.stub(extensionProxy, 'installDockerWithProgress').resolves(true);
+		
+		const result = await extensionProxy.preflightChecks();
+		
+		assert.strictEqual(result, true);
+		assert.ok(promptStub.calledOnce);
+		assert.ok(installStub.calledOnce);
+		
+		isDockerInstalledStub.restore();
+		promptStub.restore();
+		installStub.restore();
+	});
+
+	it('インストールが失敗した場合はfalseを返すこと', async function() {
+		// Docker未インストール
+		const isDockerInstalledStub = sinon.stub(extensionProxy, 'isDockerInstalled').resolves(false);
+		
+		// インストールプロンプトで「はい」を選択
+		const promptStub = sinon.stub(extensionProxy, 'showDockerInstallPrompt').resolves(true);
+		
+		// インストール失敗
+		const installStub = sinon.stub(extensionProxy, 'installDockerWithProgress').resolves(false);
+		
+		const result = await extensionProxy.preflightChecks();
+		
+		assert.strictEqual(result, false);
+		assert.ok(promptStub.calledOnce);
+		assert.ok(installStub.calledOnce);
+		
+		isDockerInstalledStub.restore();
+		promptStub.restore();
+		installStub.restore();
+	});
+
+	it('Dockerインストール実行関数が正しくDockerInstallerを呼び出すこと', async function() {
+		// dockerInstallerのスタブ
+		const detectOSStub = sinon.stub(dockerInstaller, 'detectOS').returns({
+			platform: 'linux',
+			isWSL: false
+		});
+		
+		const detectLinuxDistroStub = sinon.stub(dockerInstaller, 'detectLinuxDistro').resolves({
+			id: 'ubuntu',
+			version: '20.04'
+		});
+		
+		const installDockerStub = sinon.stub(dockerInstaller, 'installDocker').resolves({
+			success: true,
+			message: 'インストール成功'
+		});
+		
+		// 実行
+		const result = await extensionProxy.installDockerWithProgress();
+		
+		// 検証
+		assert.strictEqual(result, true);
+		assert.ok(detectOSStub.calledOnce);
+		assert.ok(detectLinuxDistroStub.calledOnce);
+		assert.ok(installDockerStub.calledOnce);
+		assert.ok(vscode.window.showInformationMessage.calledOnce);
+		
+		// スタブを元に戻す
+		detectOSStub.restore();
+		detectLinuxDistroStub.restore();
+		installDockerStub.restore();
+	});
+
+	it('Dockerインストール失敗時にエラーメッセージが表示されること', async function() {
+		// dockerInstallerのスタブ
+		const detectOSStub = sinon.stub(dockerInstaller, 'detectOS').returns({
+			platform: 'linux',
+			isWSL: false
+		});
+		
+		const detectLinuxDistroStub = sinon.stub(dockerInstaller, 'detectLinuxDistro').resolves({
+			id: 'ubuntu',
+			version: '20.04'
+		});
+		
+		const installDockerStub = sinon.stub(dockerInstaller, 'installDocker').resolves({
+			success: false,
+			message: 'インストール失敗',
+			details: 'インストールエラーの詳細'
+		});
+		
+		// 実行
+		const result = await extensionProxy.installDockerWithProgress();
+		
+		// 検証
+		assert.strictEqual(result, false);
+		assert.ok(detectOSStub.calledOnce);
+		assert.ok(detectLinuxDistroStub.calledOnce);
+		assert.ok(installDockerStub.calledOnce);
+		assert.ok(vscode.window.showErrorMessage.calledOnce);
+		assert.ok(vscode.window.showErrorMessage.calledWith('インストール失敗: インストールエラーの詳細'));
+		
+		// スタブを元に戻す
+		detectOSStub.restore();
+		detectLinuxDistroStub.restore();
+		installDockerStub.restore();
 	});
 }); 
