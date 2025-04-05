@@ -4,6 +4,22 @@ All notable changes to the "work-env" extension will be documented in this file.
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.0.7] - 2025-04-05
+
+### Added
+
+- GitHub Actions ワークフローの追加
+  - プッシュとプルリクエスト時の自動テスト実行
+  - タグ付け時の自動ビルドとデプロイ
+  - Visual Studio Marketplace への自動パブリッシング
+
+### Improved
+
+- CI/CD パイプラインの整備
+  - テスト、ビルド、デプロイの自動化
+  - GitHub Actions 設定ファイルの追加
+  - テストカバレッジ結果の自動収集
+
 ## [1.0.6] - 2024-07-30
 
 ### 修正
