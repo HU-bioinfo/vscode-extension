@@ -1,7 +1,7 @@
 import * as assert from 'assert';
 import * as sinon from 'sinon';
 import * as os from 'os';
-import { vscode, resetMocks } from '../src/test-helper';
+import { vscode, resetMocks } from '../../src/test-helper';
 
 // テスト実行前にrequireするため、最初にrequireを記述
 let dockerInstaller: any;
@@ -16,8 +16,8 @@ describe('Docker インストール機能のテスト', function() {
         // ここでrequireをクリアしてからモジュールを再度読み込む
         // これは環境変数に依存するモジュールをテストする場合に必要
         try {
-            delete require.cache[require.resolve('../src/docker-installer')];
-            dockerInstaller = require('../src/docker-installer');
+            delete require.cache[require.resolve('../../src/docker-installer')];
+            dockerInstaller = require('../../src/docker-installer');
             
             // VSCodeモックをdockerInstallerにセット
             if (dockerInstaller._test && typeof dockerInstaller._test.setVSCodeMock === 'function') {

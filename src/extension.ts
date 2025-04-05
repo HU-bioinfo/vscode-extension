@@ -609,3 +609,28 @@ export async function installDockerWithProgress(): Promise<boolean> {
         return false;
     }
 }
+
+// Export function for E2E testing
+/**
+ * 設定のバリデーションを行う（E2Eテスト用）
+ * @returns 設定が有効な場合はtrue、そうでない場合はfalse
+ */
+export async function validateSettings(): Promise<boolean> {
+  try {
+    const config = await collectDockerComposeConfig();
+    return config !== null;
+  } catch (error) {
+    vscode.window.showErrorMessage(`設定のバリデーションに失敗しました: ${parseErrorMessage(error)}`);
+    return false;
+  }
+}
+
+// E2Eテスト用のエクスポート
+// 統合テストで使用する関数をここでエクスポート
+export const forTesting = {
+  validateSettings,
+  collectDockerComposeConfig,
+  isDockerInstalled,
+  isRemoteContainersInstalled,
+  preflightChecks
+};
