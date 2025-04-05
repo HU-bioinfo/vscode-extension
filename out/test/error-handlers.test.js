@@ -328,11 +328,82 @@ describe('ネットワークエラーハンドリングテスト', () => {
 // isDockerErrorのテスト
 describe('isDockerErrorのテスト', () => {
     it('Dockerエラーを正しく識別する', () => {
-        assert.strictEqual(errorHandlers.isDockerError(new Error('docker command not found')), true);
-        assert.strictEqual(errorHandlers.isDockerError(new Error('daemon is not running')), true);
-        assert.strictEqual(errorHandlers.isDockerError(new Error('container exited with code 1')), true);
-        assert.strictEqual(errorHandlers.isDockerError(new Error('image not found')), true);
-        assert.strictEqual(errorHandlers.isDockerError(new Error('no such error')), false);
+        const dockerError = new Error('Cannot connect to the Docker daemon');
+        assert.strictEqual(errorHandlers.isDockerError(dockerError), true);
+        const nonDockerError = new Error('General error message');
+        assert.strictEqual(errorHandlers.isDockerError(nonDockerError), false);
+    });
+    it('様々なDockerエラーパターンをテストする', () => {
+        const errors = [
+            { message: 'error during connect: This error may indicate that the docker daemon is not running', expected: true },
+            { message: 'Error response from daemon', expected: true },
+            { message: 'docker: command not found', expected: true },
+            { message: 'permission denied while trying to connect to the Docker daemon socket', expected: true },
+            { message: '一般的なエラー', expected: false },
+            { message: 'Connection refused', expected: false }
+        ];
+        errors.forEach(error => {
+            assert.strictEqual(errorHandlers.isDockerError(new Error(error.message)), error.expected, `エラーメッセージ "${error.message}" が正しく識別されなかった`);
+        });
+    });
+});
+describe('handleDockerErrorのテスト', () => {
+    beforeEach(() => {
+        (0, test_helper_1.resetMocks)();
+        // showErrorMessageのオリジナル実装を保存し、スタブで置き換え
+        test_helper_1.vscode.window.showErrorMessage = sinon.stub().returns(Promise.resolve(undefined));
+    });
+    afterEach(() => {
+        sinon.restore();
+    });
+    it('インストールエラーの処理', async () => {
+        const notFoundError = new Error('docker: command not found');
+        await errorHandlers.handleDockerError(notFoundError);
+        assert.ok(test_helper_1.vscode.window.showErrorMessage.calledWith(sinon.match('Dockerがインストールされていません')));
+    });
+    it('接続エラーの処理', async () => {
+        const connectionError = new Error('error during connect: This error may indicate that the docker daemon is not running');
+        await errorHandlers.handleDockerError(connectionError);
+        assert.ok(test_helper_1.vscode.window.showErrorMessage.calledWith(sinon.match('Dockerデーモンが実行されていません')));
+    });
+    it('権限エラーの処理', async () => {
+        const permissionError = new Error('permission denied while trying to connect to the Docker daemon socket');
+        await errorHandlers.handleDockerError(permissionError);
+        assert.ok(test_helper_1.vscode.window.showErrorMessage.calledWith(sinon.match('Dockerを実行する権限がありません')));
+    });
+    it('一般的なDockerエラーの処理', async () => {
+        const generalError = new Error('Some Docker error');
+        await errorHandlers.handleDockerError(generalError);
+        assert.ok(test_helper_1.vscode.window.showErrorMessage.called);
+    });
+});
+describe('handleFileSystemErrorのテスト', () => {
+    beforeEach(() => {
+        (0, test_helper_1.resetMocks)();
+        test_helper_1.vscode.window.showErrorMessage = sinon.stub().returns(Promise.resolve(undefined));
+    });
+    afterEach(() => {
+        sinon.restore();
+    });
+    it('ファイルが存在しないエラーの処理', async () => {
+        const notFoundError = new Error('ENOENT: no such file or directory');
+        errorHandlers.handleFileSystemError(notFoundError);
+        assert.ok(test_helper_1.vscode.window.showErrorMessage.calledWith(sinon.match('ファイルまたはディレクトリが見つかりません')));
+    });
+    it('アクセス権限エラーの処理', async () => {
+        const permissionError = new Error('EACCES: permission denied');
+        errorHandlers.handleFileSystemError(permissionError);
+        assert.ok(test_helper_1.vscode.window.showErrorMessage.calledWith(sinon.match('ファイルへのアクセス権限がありません')));
+    });
+    it('ファイルが既に存在するエラーの処理', async () => {
+        const existsError = new Error('EEXIST: file already exists');
+        errorHandlers.handleFileSystemError(existsError);
+        assert.ok(test_helper_1.vscode.window.showErrorMessage.calledWith(sinon.match('ファイルまたはディレクトリがすでに存在します')));
+    });
+    it('一般的なファイルシステムエラーの処理', async () => {
+        const generalError = new Error('Some file system error');
+        errorHandlers.handleFileSystemError(generalError);
+        assert.ok(test_helper_1.vscode.window.showErrorMessage.calledWith(sinon.match('ファイル操作中にエラーが発生しました')));
     });
 });
 //# sourceMappingURL=error-handlers.test.js.map

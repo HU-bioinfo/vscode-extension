@@ -38,7 +38,7 @@ exports.activate = activate;
 exports.preflightChecks = preflightChecks;
 exports.pullDockerImage = pullDockerImage;
 exports.removeExistingContainers = removeExistingContainers;
-exports.isRemoteContainersExtensionInstalled = isRemoteContainersExtensionInstalled;
+exports.isRemoteContainersInstalled = isRemoteContainersInstalled;
 exports.showRemoteContainersNotInstalledError = showRemoteContainersNotInstalledError;
 exports.isDockerInstalled = isDockerInstalled;
 exports.showDockerNotInstalledError = showDockerNotInstalledError;
@@ -52,6 +52,10 @@ exports.collectDockerComposeConfig = collectDockerComposeConfig;
 exports.setupFolderPermissions = setupFolderPermissions;
 exports.processTemplateFile = processTemplateFile;
 exports.copyFolderRecursiveSync = copyFolderRecursiveSync;
+exports.generateDockerComposeFiles = generateDockerComposeFiles;
+exports.startWorkEnv = startWorkEnv;
+exports.executeDockerCommand = executeDockerCommand;
+exports.resetWorkEnvConfig = resetWorkEnvConfig;
 const vscode = __importStar(require("vscode"));
 const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
@@ -150,7 +154,7 @@ function activate(context) {
  */
 async function preflightChecks() {
     // Remote Containers拡張機能がインストールされているか確認
-    if (!isRemoteContainersExtensionInstalled()) {
+    if (!await isRemoteContainersInstalled()) {
         showRemoteContainersNotInstalledError();
         return false;
     }
@@ -200,7 +204,7 @@ async function removeExistingContainers(nameFilters) {
     }
 }
 // Remote Containers拡張機能がインストールされているかを確認する関数
-function isRemoteContainersExtensionInstalled() {
+async function isRemoteContainersInstalled() {
     const extension = vscode.extensions.getExtension('ms-vscode-remote.remote-containers');
     return !!extension;
 }
@@ -405,6 +409,123 @@ function copyFolderRecursiveSync(source, target, fsModule = fs) {
     }
     catch (error) {
         (0, error_handlers_1.handleFileSystemError)(error);
+    }
+}
+/**
+ * Docker Composeファイルを生成する
+ * @param config 設定情報
+ * @returns 成功した場合はtrue
+ */
+function generateDockerComposeFiles(config) {
+    try {
+        const devcontainerPath = path.join(os.tmpdir(), '.devcontainer');
+        if (!fs.existsSync(devcontainerPath)) {
+            fs.mkdirSync(devcontainerPath, { recursive: true });
+        }
+        const dockerComposePath = path.join(devcontainerPath, 'docker-compose.yml');
+        const dockerComposeContent = `version: '3'
+services:
+  workspace:
+    image: ${exports.CONFIG.DOCKER_IMAGE}
+    volumes:
+      - "${config.projectFolder}:/workspace"
+      - "${config.cacheFolder}:/cache"
+    environment:
+      - GITHUB_TOKEN=${config.githubPat}
+    command: sleep infinity`;
+        fs.writeFileSync(dockerComposePath, dockerComposeContent);
+        return true;
+    }
+    catch (error) {
+        (0, error_handlers_1.handleFileSystemError)(error);
+        vscode.window.showErrorMessage(`Docker Composeファイルの生成に失敗しました: ${(0, error_handlers_1.parseErrorMessage)(error)}`);
+        return false;
+    }
+}
+/**
+ * 開発環境を起動する
+ */
+async function startWorkEnv() {
+    try {
+        // 事前チェック
+        if (!await preflightChecks()) {
+            return;
+        }
+        // テスト用コンテキスト
+        const context = vscode.extensions.getExtension('hu-bioinfo-workshop.work-env')?.extensionUri || { fsPath: path.join(os.tmpdir(), 'work-env-extension') };
+        const storageUri = { fsPath: path.join(os.tmpdir(), 'work-env') };
+        // DockerイメージのPull
+        if (!await pullDockerImage(exports.CONFIG.DOCKER_IMAGE)) {
+            return;
+        }
+        const devcontainerPath = path.join(storageUri.fsPath, ".devcontainer");
+        const dockercomposeFilePath = path.join(devcontainerPath, "docker-compose.yml");
+        // .devcontainer の設定
+        if (!fs.existsSync(devcontainerPath)) {
+            vscode.window.showInformationMessage(".devcontainerを設定中...");
+            setupDevContainer({ extensionUri: context, globalStorageUri: storageUri, subscriptions: [] }, devcontainerPath);
+        }
+        // 設定情報を収集してDocker Composeファイルを生成
+        if (!fs.existsSync(dockercomposeFilePath)) {
+            const success = await generateDockerCompose({ extensionUri: context, globalStorageUri: storageUri, subscriptions: [] }, dockercomposeFilePath);
+            if (!success) {
+                return;
+            }
+        }
+        // remote-containers.openFolder コマンドで開く
+        openFolderInContainer(storageUri.fsPath);
+    }
+    catch (error) {
+        const errorMessage = (0, error_handlers_1.parseErrorMessage)(error);
+        if ((0, error_handlers_1.isDockerError)(error)) {
+            (0, error_handlers_1.handleDockerError)(error);
+        }
+        else {
+            vscode.window.showErrorMessage(`エラー: ${errorMessage}`);
+        }
+    }
+}
+/**
+ * Dockerコマンドを実行する
+ * @param command 実行するコマンド
+ * @returns 成功した場合はコマンドの出力、失敗した場合はnull
+ */
+async function executeDockerCommand(command) {
+    try {
+        const { stdout } = await execPromise(command);
+        return stdout;
+    }
+    catch (error) {
+        if ((0, error_handlers_1.isDockerError)(error)) {
+            (0, error_handlers_1.handleDockerError)(error);
+        }
+        else {
+            vscode.window.showErrorMessage(`コマンド実行エラー: ${(0, error_handlers_1.parseErrorMessage)(error)}`);
+        }
+        return null;
+    }
+}
+/**
+ * 設定をリセットする
+ */
+async function resetWorkEnvConfig() {
+    try {
+        // テスト用コンテキスト
+        const context = vscode.extensions.getExtension('hu-bioinfo-workshop.work-env')?.extensionUri || { fsPath: path.join(os.tmpdir(), 'work-env-extension') };
+        const storageUri = { fsPath: path.join(os.tmpdir(), 'work-env') };
+        const devcontainerPath = path.join(storageUri.fsPath, ".devcontainer");
+        const dockercomposeFilePath = path.join(devcontainerPath, "docker-compose.yml");
+        // 設定情報を収集してDocker Composeファイルを上書き
+        const success = await generateDockerCompose({ extensionUri: context, globalStorageUri: storageUri, subscriptions: [] }, dockercomposeFilePath);
+        if (!success) {
+            return;
+        }
+        // コンテナの削除
+        await removeExistingContainers(exports.CONFIG.CONTAINER_NAME_FILTERS);
+        vscode.window.showInformationMessage("設定をリセットしました。");
+    }
+    catch (error) {
+        vscode.window.showErrorMessage(`設定のリセットに失敗しました: ${(0, error_handlers_1.parseErrorMessage)(error)}`);
     }
 }
 //# sourceMappingURL=extension.js.map

@@ -76,11 +76,15 @@ export function isDockerError(error: any): boolean {
 export function handleDockerError(error: any): void {
     const message = parseErrorMessage(error).toLowerCase();
     
-    if (message.includes('cannot connect to the docker daemon') || 
+    if (message.includes('docker: command not found') || message.includes('command not found: docker')) {
+        vscode.window.showErrorMessage('Dockerがインストールされていません。Dockerをインストールしてください。');
+    } else if (message.includes('error during connect') || 
+        message.includes('cannot connect to the docker daemon') || 
         message.includes('daemon is not running')) {
-        vscode.window.showErrorMessage('Dockerデーモンに接続できません。Dockerが起動しているか確認してください。');
-    } else if (message.includes('permission denied')) {
-        vscode.window.showErrorMessage('Dockerの実行権限がありません。管理者権限で実行するか、ユーザーをdockerグループに追加してください。');
+        vscode.window.showErrorMessage('Dockerデーモンが実行されていません。Dockerデーモンを起動してください。');
+    } else if (message.includes('permission denied while trying to connect') || 
+        message.includes('permission denied')) {
+        vscode.window.showErrorMessage('Dockerを実行する権限がありません。ユーザーをDockerグループに追加するか、管理者権限で実行してください。');
     } else if (message.includes('not found')) {
         vscode.window.showErrorMessage('Dockerイメージまたはコンテナが見つかりません。イメージ名やタグを確認してください。');
     } else {

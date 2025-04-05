@@ -37,7 +37,6 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.expectation = exports.fsMock = exports.childProcess = exports.mockVscode = exports.vscode = void 0;
-exports.isRemoteContainersExtensionInstalled = isRemoteContainersExtensionInstalled;
 exports.showRemoteContainersNotInstalledError = showRemoteContainersNotInstalledError;
 exports.showDockerNotInstalledError = showDockerNotInstalledError;
 exports.checkDockerPermissions = checkDockerPermissions;
@@ -46,12 +45,11 @@ exports.setupDevContainer = setupDevContainer;
 exports.openFolderInContainer = openFolderInContainer;
 exports.resetAllMocks = resetAllMocks;
 exports.waitForPromise = waitForPromise;
+exports.isRemoteContainersInstalled = isRemoteContainersInstalled;
 exports.isDockerInstalled = isDockerInstalled;
 exports.generateDockerCompose = generateDockerCompose;
 exports.createMockVscodeModule = createMockVscodeModule;
-exports.isRemoteContainersInstalled = isRemoteContainersInstalled;
 exports.resetMocks = resetMocks;
-exports.setupMockFileSystem = setupMockFileSystem;
 exports.createMockContext = createMockContext;
 exports.mockDockerSuccess = mockDockerSuccess;
 exports.mockDockerFailure = mockDockerFailure;
@@ -59,6 +57,7 @@ exports.mockProjectFolderSelection = mockProjectFolderSelection;
 exports.mockCacheFolderSelection = mockCacheFolderSelection;
 exports.mockGitHubPatInput = mockGitHubPatInput;
 exports.mockRemoteContainersExtension = mockRemoteContainersExtension;
+exports.setupMockFileSystem = setupMockFileSystem;
 const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
 const child_process_1 = require("child_process");
@@ -148,14 +147,25 @@ exports.mockVscode = {
 function resetAllMocks() {
     // すべてのモック関数をリセット
     sinon.reset();
+    // 特定のメソッドを明示的にリセット
+    exports.vscode.window.showErrorMessage.resetHistory();
+    exports.vscode.window.showInformationMessage.resetHistory();
+    exports.vscode.commands.executeCommand.resetHistory();
+    exports.vscode.extensions.getExtension.resetHistory();
+    // 必要に応じて他のメソッドもリセット
 }
 // 非同期処理のテスト用ユーティリティ
 function waitForPromise(ms = 0) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 // Remote Containers拡張機能がインストールされているかを確認する関数
-function isRemoteContainersExtensionInstalled() {
-    const extension = vscodeModule.extensions.getExtension('ms-vscode-remote.remote-containers');
+async function isRemoteContainersInstalled() {
+    // テスト環境では常にtrueを返す
+    if (process.env.NODE_ENV === 'test') {
+        return true;
+    }
+    // 実環境での実装
+    const extension = exports.vscode.extensions.getExtension('ms-vscode-remote.remote-containers');
     return !!extension;
 }
 // Remote Containers拡張機能がインストールされていない場合のエラーメッセージを表示
@@ -242,32 +252,19 @@ function openFolderInContainer(extensionStoragePath) {
 }
 // Docker Composeテンプレートを生成する関数 (テスト用シンプル実装)
 function generateDockerCompose(projectPath, cachePath, githubToken) {
-    // テスト中は簡易な文字列を返す
-    if (process.env.NODE_ENV === 'test') {
-        return 'version: "3"\nservices:\n  test:\n    image: test';
-    }
-    // 実際の実装
-    const template = `version: "3"
+    // Windows形式のパスをUNIX形式に変換
+    const normalizedProjectPath = projectPath.replace(/\\/g, '/');
+    const normalizedCachePath = cachePath.replace(/\\/g, '/');
+    return `version: '3'
 services:
-  jupyter:
-    image: jupyter/datascience-notebook
+  workspace:
+    image: kokeh/hu_bioinfo:stable
     volumes:
-      - ${projectPath}:/home/jovyan/work
-      - ${cachePath}:/home/jovyan/.cache
+      - "${normalizedProjectPath}:/workspace"
+      - "${normalizedCachePath}:/cache"
     environment:
       - GITHUB_TOKEN=${githubToken}
-    ports:
-      - "8888:8888"
-  rstudio:
-    image: rocker/tidyverse
-    volumes:
-      - ${projectPath}:/home/rstudio/work
-      - ${cachePath}:/home/rstudio/.cache
-    environment:
-      - GITHUB_PAT=${githubToken}
-    ports:
-      - "8787:8787"`;
-    return template;
+    command: sleep infinity`;
 }
 function copyFolderRecursiveSync(source, target) {
     if (!fs.existsSync(source)) {
@@ -290,9 +287,6 @@ function copyFolderRecursiveSync(source, target) {
 }
 function createMockVscodeModule() {
     return exports.mockVscode;
-}
-async function isRemoteContainersInstalled() {
-    return true; // テスト中は常にtrueを返す
 }
 // child_processモジュールのモック化
 exports.childProcess = {
@@ -321,7 +315,9 @@ exports.fsMock = {
 };
 // モック状態をリセットする関数
 function resetMocks() {
-    sinon.resetHistory();
+    // すべてのモックをリセット（重要: これによりすべてのスタブとスパイがリセットされます）
+    sinon.reset();
+    // VSCode関連のモック履歴をリセット
     vscodeModule.window.showErrorMessage.resetHistory();
     vscodeModule.window.showInformationMessage.resetHistory();
     vscodeModule.window.showInputBox.resetHistory();
@@ -332,7 +328,9 @@ function resetMocks() {
     vscodeModule.env.openExternal.resetHistory();
     vscodeModule.Uri.file.resetHistory();
     vscodeModule.Uri.parse.resetHistory();
+    // その他の依存モック履歴をリセット
     exports.childProcess.exec.resetHistory();
+    // ファイルシステムモック履歴をリセット
     exports.fsMock.existsSync.resetHistory();
     exports.fsMock.mkdirSync.resetHistory();
     exports.fsMock.writeFileSync.resetHistory();
@@ -340,7 +338,151 @@ function resetMocks() {
     exports.fsMock.readdirSync.resetHistory();
     exports.fsMock.copyFileSync.resetHistory();
     exports.fsMock.lstatSync.resetHistory();
+    // スタブとモックに初期値を再設定
+    initializeDefaultStubs();
 }
+// デフォルトのスタブ値を初期化する補助関数
+function initializeDefaultStubs() {
+    // VSCode関連のスタブ初期化
+    vscodeModule.window.showErrorMessage.returns(Promise.resolve(undefined));
+    vscodeModule.window.showInformationMessage.returns(Promise.resolve(undefined));
+    vscodeModule.window.showInputBox.returns(Promise.resolve(''));
+    vscodeModule.window.showOpenDialog.returns(Promise.resolve(undefined));
+    vscodeModule.commands.executeCommand.returns(Promise.resolve(undefined));
+    // ファイルシステムのデフォルト値
+    exports.fsMock.existsSync.returns(true);
+    exports.fsMock.readFileSync.returns('');
+    exports.fsMock.readdirSync.returns([]);
+    exports.fsMock.lstatSync.returns({ isDirectory: sinon.stub().returns(false) });
+    // 子プロセスの実行結果
+    exports.childProcess.exec.callsFake((cmd, callback) => {
+        if (callback && typeof callback === 'function') {
+            callback(null, { stdout: 'success', stderr: '' }, '');
+        }
+        return {
+            on: sinon.stub(),
+            stdout: { on: sinon.stub() },
+            stderr: { on: sinon.stub() }
+        };
+    });
+}
+// VSCodeのモックコンテキストを作成する関数
+function createMockContext(extensionPath = '/extension/path') {
+    return {
+        extensionUri: { fsPath: extensionPath },
+        globalStorageUri: { fsPath: '/storage/path' },
+        subscriptions: [],
+        globalState: {
+            update: sinon.stub().resolves(),
+            get: sinon.stub().returns(undefined)
+        }
+    };
+}
+// Dockerコマンドの成功をモックする
+function mockDockerSuccess() {
+    exports.childProcess.exec.callsFake((cmd, callback) => {
+        if (cmd.includes('docker') && callback && typeof callback === 'function') {
+            callback(null, { stdout: 'Docker is running', stderr: '' }, '');
+        }
+        return {
+            on: sinon.stub(),
+            stdout: { on: sinon.stub() },
+            stderr: { on: sinon.stub() }
+        };
+    });
+}
+// Dockerコマンドの失敗をモックする
+function mockDockerFailure(errorMsg = 'Docker command failed') {
+    // テスト間でのスタブの継承を防ぐためにすべてのモックをリセット
+    sinon.restore();
+    // child_processのexecを新しく設定
+    exports.childProcess.exec = sinon.stub();
+    const error = new Error(errorMsg);
+    // すべてのDockerコマンドに対して、エラーを返すように設定
+    exports.childProcess.exec.callsFake((command, options, callback) => {
+        if (typeof options === 'function') {
+            callback = options;
+            options = {};
+        }
+        if (command.includes('docker')) {
+            if (callback) {
+                callback(error, null);
+            }
+            return { error: error };
+        }
+        // Dockerコマンド以外は正常に実行
+        if (callback) {
+            callback(null, { stdout: 'Success' });
+        }
+        return { error: null };
+    });
+    return exports.childProcess.exec;
+}
+// プロジェクトフォルダ選択のモック
+function mockProjectFolderSelection(folderPath = '/test/project') {
+    // 既存のモックをリセット
+    exports.vscode.window.showOpenDialog.reset();
+    exports.vscode.window.showOpenDialog.resolves([{ fsPath: folderPath }]);
+    // コールバック関数を適切に設定
+    exports.vscode.window.showOpenDialog.callsFake((options) => {
+        return Promise.resolve([{ fsPath: folderPath }]);
+    });
+}
+// キャッシュフォルダ選択のモック
+function mockCacheFolderSelection(folderPath = '/test/cache') {
+    // 既存のモックをリセット
+    exports.vscode.window.showOpenDialog.reset();
+    exports.vscode.window.showOpenDialog.resolves([{ fsPath: folderPath }]);
+    // コールバック関数を適切に設定
+    exports.vscode.window.showOpenDialog.callsFake((options) => {
+        return Promise.resolve([{ fsPath: folderPath }]);
+    });
+}
+// GitHub PATの入力モック
+function mockGitHubPatInput(pat = 'fake-github-pat') {
+    // 既存のモックをリセット
+    exports.vscode.window.showInputBox.reset();
+    exports.vscode.window.showInputBox.resolves(pat);
+    // 明示的にスタブを設定
+    exports.vscode.window.showInputBox.callsFake((options) => {
+        return Promise.resolve(pat);
+    });
+}
+// Remote Containers拡張機能の有無をモック
+function mockRemoteContainersExtension(installed = true) {
+    // 既存のモックをリセット
+    exports.vscode.extensions.getExtension.reset();
+    // 明示的にスタブを設定
+    exports.vscode.extensions.getExtension.callsFake((extensionId) => {
+        if (extensionId === 'ms-vscode-remote.remote-containers') {
+            return installed ? { id: 'ms-vscode-remote.remote-containers' } : undefined;
+        }
+        return undefined;
+    });
+}
+// アサーション用のヘルパー
+exports.expectation = {
+    // エラーメッセージが表示されたことを確認
+    errorMessageShown: (message) => {
+        assert_1.default.ok(vscodeModule.window.showErrorMessage.calledWith(sinon.match(message)), `Error message "${message}" was not shown`);
+    },
+    // 情報メッセージが表示されたことを確認
+    infoMessageShown: (message) => {
+        assert_1.default.ok(vscodeModule.window.showInformationMessage.calledWith(sinon.match(message)), `Info message "${message}" was not shown`);
+    },
+    // コマンドが実行されたことを確認
+    commandExecuted: (command, ...args) => {
+        assert_1.default.ok(vscodeModule.commands.executeCommand.calledWith(command, ...args), `Command "${command}" was not executed`);
+    },
+    // Dockerコマンドが実行されたことを確認
+    dockerCommandExecuted: (command) => {
+        assert_1.default.ok(exports.childProcess.exec.calledWith(sinon.match(command)), `Docker command "${command}" was not executed`);
+    },
+    // ファイルが作成されたことを確認
+    fileCreated: (filePath, content) => {
+        assert_1.default.ok(exports.fsMock.writeFileSync.calledWith(sinon.match(filePath), content ? sinon.match(content) : sinon.match.any), `File "${filePath}" was not created`);
+    }
+};
 // ダミーファイルシステムをセットアップする関数
 function setupMockFileSystem(structure) {
     exports.fsMock.existsSync.callsFake((filePath) => {
@@ -381,77 +523,4 @@ function setupMockFileSystem(structure) {
         };
     });
 }
-// VSCodeのモックコンテキストを作成する関数
-function createMockContext(extensionPath = '/extension/path') {
-    return {
-        extensionUri: { fsPath: extensionPath },
-        globalStorageUri: { fsPath: '/storage/path' },
-        subscriptions: []
-    };
-}
-// Dockerコマンドの成功をモックする
-function mockDockerSuccess() {
-    exports.childProcess.exec.callsFake((cmd, callback) => {
-        if (cmd.includes('docker') && callback && typeof callback === 'function') {
-            callback(null, { stdout: 'Docker is running', stderr: '' }, '');
-        }
-        return {
-            on: sinon.stub(),
-            stdout: { on: sinon.stub() },
-            stderr: { on: sinon.stub() }
-        };
-    });
-}
-// Dockerコマンドの失敗をモックする
-function mockDockerFailure(errorMsg = 'Docker command failed') {
-    exports.childProcess.exec.callsFake((cmd, callback) => {
-        if (cmd.includes('docker') && callback && typeof callback === 'function') {
-            callback(new Error(errorMsg), { stdout: '', stderr: errorMsg }, '');
-        }
-        return {
-            on: sinon.stub(),
-            stdout: { on: sinon.stub() },
-            stderr: { on: sinon.stub() }
-        };
-    });
-}
-// プロジェクトフォルダ選択のモック
-function mockProjectFolderSelection(folderPath = '/test/project') {
-    vscodeModule.window.showOpenDialog.onFirstCall().resolves([{ fsPath: folderPath }]);
-}
-// キャッシュフォルダ選択のモック
-function mockCacheFolderSelection(folderPath = '/test/cache') {
-    vscodeModule.window.showOpenDialog.onSecondCall().resolves([{ fsPath: folderPath }]);
-}
-// GitHub PATの入力モック
-function mockGitHubPatInput(pat = 'fake-github-pat') {
-    vscodeModule.window.showInputBox.resolves(pat);
-}
-// Remote Containers拡張機能の有無をモック
-function mockRemoteContainersExtension(installed = true) {
-    vscodeModule.extensions.getExtension.withArgs('ms-vscode-remote.remote-containers').returns(installed ? { id: 'ms-vscode-remote.remote-containers' } : undefined);
-}
-// アサーション用のヘルパー
-exports.expectation = {
-    // エラーメッセージが表示されたことを確認
-    errorMessageShown: (message) => {
-        assert_1.default.ok(vscodeModule.window.showErrorMessage.calledWith(sinon.match(message)), `Error message "${message}" was not shown`);
-    },
-    // 情報メッセージが表示されたことを確認
-    infoMessageShown: (message) => {
-        assert_1.default.ok(vscodeModule.window.showInformationMessage.calledWith(sinon.match(message)), `Info message "${message}" was not shown`);
-    },
-    // コマンドが実行されたことを確認
-    commandExecuted: (command, ...args) => {
-        assert_1.default.ok(vscodeModule.commands.executeCommand.calledWith(command, ...args), `Command "${command}" was not executed`);
-    },
-    // Dockerコマンドが実行されたことを確認
-    dockerCommandExecuted: (command) => {
-        assert_1.default.ok(exports.childProcess.exec.calledWith(sinon.match(command)), `Docker command "${command}" was not executed`);
-    },
-    // ファイルが作成されたことを確認
-    fileCreated: (filePath, content) => {
-        assert_1.default.ok(exports.fsMock.writeFileSync.calledWith(sinon.match(filePath), content ? sinon.match(content) : sinon.match.any), `File "${filePath}" was not created`);
-    }
-};
 //# sourceMappingURL=test-helper.js.map
