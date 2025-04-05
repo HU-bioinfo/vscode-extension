@@ -4,7 +4,7 @@
   "publisher": "hu-bioinfo-workshop",
   "description": "Work environment for R/Python analysis and development",
   "repository": "https://github.com/shuu5/HU_BioInfo_work_env.git",
-  "version": "1.0.6",
+  "version": "1.0.8",
   "engines": {
     "vscode": "^1.96.0"
   },
@@ -35,8 +35,10 @@
     "pretest": "npm run compile && npm run lint",
     "lint": "eslint src",
     "test": "npm run unit-test",
-    "unit-test": "cross-env NODE_ENV=test VSCODE_MOCK=1 ts-mocha -p tsconfig.json test/**/*.test.ts",
-    "test:coverage": "cross-env NODE_ENV=test VSCODE_MOCK=1 nyc npm run unit-test"
+    "unit-test": "cross-env NODE_ENV=test VSCODE_MOCK=1 mocha --require ts-node/register --ui bdd --extension ts,tsx --recursive 'test/**/*.test.ts' --exclude 'test/runTest.ts' --timeout 60000",
+    "test:coverage": "cross-env NODE_ENV=test VSCODE_MOCK=1 nyc npm run unit-test",
+    "integration-test": "npm run compile && cross-env VSCODE_MOCK=0 node ./out/test/runTest.js",
+    "test:all": "npm run unit-test && npm run integration-test"
   },
   "devDependencies": {
     "@istanbuljs/nyc-config-typescript": "^1.0.2",
@@ -48,6 +50,8 @@
     "@types/vscode": "^1.96.0",
     "@typescript-eslint/eslint-plugin": "^8.28.0",
     "@typescript-eslint/parser": "^8.28.0",
+    "@vscode/test-cli": "^0.0.10",
+    "@vscode/test-electron": "^2.4.1",
     "chai": "^5.2.0",
     "cross-env": "^7.0.3",
     "eslint": "^9.23.0",

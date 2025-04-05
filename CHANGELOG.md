@@ -4,6 +4,23 @@ All notable changes to the "work-env" extension will be documented in this file.
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.0.8] - 2025-04-05
+
+### Fixed
+
+- テスト実行時の無限再帰問題を解決
+  - モック環境と統合テスト環境を明確に分離
+  - `test/setup.ts` による環境変数ベースのテストモード切り替え実装
+  - テストヘルパーのモック関数を環境に応じて条件分岐するよう改善
+
+### Improved
+
+- テスト関連コードの品質向上
+  - VS Code API 呼び出し時の型問題を修正（`vscode` → `vscodeTypes`）
+  - 統合テストモードでのスキップロジック追加
+  - エラーハンドリング強化によるテスト安定性向上
+  - テスト関連ドキュメントを更新
+
 ## [1.0.7] - 2025-04-05
 
 ### Added

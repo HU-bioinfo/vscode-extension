@@ -2,9 +2,10 @@
 
 ## テスト概要
 
-work-env 拡張機能のテストは、ユニットテストに焦点を当てて実施します：
+work-env 拡張機能のテストは、以下の2つのタイプのテストに焦点を当てて実施します：
 
-- **ユニットテスト**: 個別の関数やコンポーネントの動作を確認
+- **ユニットテスト**: 個別の関数やコンポーネントの動作を確認（モック環境）
+- **統合テスト**: 実際のVS Code APIを使用した統合動作を確認
 
 これらのテストにより、拡張機能の信頼性と安定性を確保します。
 
@@ -13,9 +14,11 @@ work-env 拡張機能のテストは、ユニットテストに焦点を当て�
 ### 必要なツール
 
 - Node.js と npm
-- ts-mocha (TypeScript で Mocha テストを実行するためのツール)
+- mocha - テストフレームワーク
+- ts-node - TypeScriptで直接テストを実行するためのツール
 - nyc (Istanbul) - コードカバレッジ計測ツール
 - sinon - モック・スタブ・スパイ作成用ライブラリ
+- cross-env - 環境変数の設定
 
 ### テスト設定
 
@@ -24,9 +27,41 @@ work-env 拡張機能のテストは、ユニットテストに焦点を当て�
 ```json
 "scripts": {
   "test": "npm run unit-test",
-  "unit-test": "cross-env NODE_ENV=test VSCODE_MOCK=1 ts-mocha -p tsconfig.json test/**/*.test.ts",
+  "unit-test": "cross-env NODE_ENV=test VSCODE_MOCK=1 mocha --require ts-node/register --ui bdd --extension ts,tsx --recursive 'test/**/*.test.ts' --exclude 'test/runTest.ts' --timeout 60000",
+  "integration-test": "npm run compile && cross-env VSCODE_MOCK=0 node ./out/test/runTest.js",
   "test:coverage": "cross-env NODE_ENV=test VSCODE_MOCK=1 nyc npm run unit-test"
 }
+```
+
+### テストモード
+
+テストは2つのモードで実行されます：
+
+1. **モックモード（ユニットテスト）**: `VSCODE_MOCK=1` 環境変数使用
+   - VS Code APIをモック化
+   - 外部依存をモック化
+   - 高速に実行可能
+
+2. **統合テストモード**: `VSCODE_MOCK=0` 環境変数使用
+   - 実際のVS Code APIを使用
+   - 一部のテストはスキップ
+   - 実際の環境での動作確認
+
+テストモードは `test/setup.ts` で管理されています：
+
+```typescript
+export enum TEST_MODE {
+  MOCK = 'モック（ユニットテスト）',
+  INTEGRATION = '統合テスト'
+}
+
+// 環境変数からテストモードを決定
+export const CURRENT_TEST_MODE = process.env.VSCODE_MOCK === '0' 
+  ? TEST_MODE.INTEGRATION 
+  : TEST_MODE.MOCK;
+
+// テスト開始時にモードを表示
+console.log(`テストモード: ${CURRENT_TEST_MODE}`);
 ```
 
 ## テストの種類
