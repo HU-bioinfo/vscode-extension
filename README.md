@@ -51,6 +51,7 @@
 
 - [仕様書](docs/specification.md) - 詳細な仕様と実装内容
 - [テスト戦略](docs/testing.md) - テスト方法と結果
+- [テスト結果履歴](docs/test_results/README.md) - バージョン別のテスト結果
 
 ## License
 
@@ -89,8 +90,23 @@ npm run test:coverage
 
 詳細なテスト情報は以下のドキュメントで確認できます：
 
-- [テスト結果](docs/test-results.md) - テスト実行結果とカバレッジレポート
+- [テスト結果履歴](docs/test_results/README.md) - バージョン別のテスト実行結果とカバレッジレポート
+- [テスト戦略](docs/testing.md) - テスト方法と実行方法
 - [仕様書](docs/specification.md) - エクステンションの詳細仕様と実装内容
+
+## バージョンアップ手順
+
+新しいバージョンをリリースする前に、以下の手順でテストを実行し、結果を保存します：
+
+```bash
+# テスト結果を保存（自動的に全テストを実行）
+npm run test:save-results
+
+# バージョンアップ（テスト結果保存も自動実行）
+npm version patch  # パッチバージョンアップの場合
+npm version minor  # マイナーバージョンアップの場合
+npm version major  # メジャーバージョンアップの場合
+```
 
 ## 最近の改善点（2024-04-05）
 

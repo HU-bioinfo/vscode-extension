@@ -4,6 +4,29 @@ All notable changes to the "work-env" extension will be documented in this file.
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.1.2] - 2025-04-06
+
+### Added
+
+- テスト結果保存機能の実装
+  - `npm run test:save-results`コマンドによるテスト結果の自動保存
+  - バージョン管理されたテスト結果のドキュメント化
+  - テスト実行結果の詳細レポート生成機能
+
+### Improved
+
+- テスト管理の強化
+  - テスト実行時の注意点をドキュメントに追加
+  - テスト環境のクリーンアップ改善
+  - 各種テスト（ユニット、ワークフロー、E2E）の安全な実行方法を整備
+
+### Changed
+
+- バージョン管理プロセスの改善
+  - `npm version`コマンド実行前の自動テスト実行
+  - テスト結果の自動保存とドキュメント更新
+  - バージョンアップ手順のドキュメント化
+
 ## [1.1.1] - 2025-04-06
 
 ### Added
