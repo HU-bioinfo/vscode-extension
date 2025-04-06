@@ -3,7 +3,7 @@
   "displayName": "work-env",
   "publisher": "hu-bioinfo-workshop",
   "description": "Work environment for R/Python analysis and development",
-  "repository": "https://github.com/shuu5/HU_BioInfo_work_env.git",
+  "repository": "https://github.com/HU-bioinfo/work-env-extension.git",
   "version": "1.1.0",
   "engines": {
     "vscode": "^1.96.0"
