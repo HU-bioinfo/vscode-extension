@@ -4,6 +4,25 @@ All notable changes to the "work-env" extension will be documented in this file.
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.1.1] - 2025-04-06
+
+### Added
+
+- テンプレート処理機能の強化
+  - `template-processor.ts`モジュールの追加
+  - プロジェクトテンプレート処理のユニットテスト実装
+
+### Fixed
+
+- リポジトリURLの更新
+  - package.jsonのリポジトリ参照先を修正
+
+### Improved
+
+- プロジェクト構造の最適化
+  - テンプレートファイルの配置を改善
+  - コンテナ設定テンプレートの整理
+
 ## [1.1.0] - 2025-04-06
 
 ### Improved
