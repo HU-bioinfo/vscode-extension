@@ -1,5 +1,0 @@
-2025-04-04 15:47:59.259 [error] Error: ENOENT: no such file or directory, access '/tmp/user/1000/wayland-0'
-    at async Object.access (node:internal/original-fs/promises:608:10)
-    at async v8 (file:///home/vscode/project/extensions_src/work-env/.vscode-test/vscode-linux-x64-1.99.0/resources/app/out/vs/code/electron-utility/sharedProcess/sharedProcessMain.js:116:9389)
-    at async Promise.all (index 1)
-    at async K8.n (file:///home/vscode/project/extensions_src/work-env/.vscode-test/vscode-linux-x64-1.99.0/resources/app/out/vs/code/electron-utility/sharedProcess/sharedProcessMain.js:116:39067)
