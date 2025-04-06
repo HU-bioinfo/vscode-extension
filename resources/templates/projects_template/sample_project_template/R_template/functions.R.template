@@ -1,0 +1,52 @@
+#' データ読み込み関数
+#'
+#' CSVファイルを読み込み、基本的な前処理を行う関数
+#'
+#' @param file_path 読み込むファイルのパス
+#' @param clean 欠損値の処理を行うかどうか (TRUE/FALSE)
+#' @return 前処理済みのデータフレーム
+#' @export
+read_dataset <- function(file_path, clean = TRUE) {
+  # データの読み込み
+  data <- read.csv(file_path, stringsAsFactors = FALSE)
+  
+  # 基本的な前処理
+  if (clean) {
+    # 欠損値を含む行の削除
+    data <- data[complete.cases(data), ]
+    # 列名を小文字に統一
+    names(data) <- tolower(names(data))
+  }
+  
+  return(data)
+}
+
+#' データ可視化関数
+#'
+#' 基本的な散布図を作成する関数
+#'
+#' @param data データフレーム
+#' @param x x軸の変数名
+#' @param y y軸の変数名
+#' @param color 色分けに使用する変数名 (オプション)
+#' @return ggplotオブジェクト
+#' @export
+plot_scatter <- function(data, x, y, color = NULL) {
+  # ggplot2パッケージが必要
+  if (!requireNamespace("ggplot2", quietly = TRUE)) {
+    stop("ggplot2パッケージが必要です: install.packages('ggplot2')")
+  }
+  
+  # 散布図の作成
+  p <- ggplot2::ggplot(data, ggplot2::aes_string(x = x, y = y)) +
+    ggplot2::geom_point() +
+    ggplot2::theme_minimal() +
+    ggplot2::labs(title = paste(y, "vs", x))
+  
+  # 色分けが指定されている場合
+  if (!is.null(color)) {
+    p <- p + ggplot2::aes_string(color = color)
+  }
+  
+  return(p)
+} 

@@ -1,0 +1,55 @@
+# 関数のテスト
+library(testthat)
+
+# テスト対象の関数を読み込み
+source("../R/functions.R")
+
+# テストケースの定義
+test_that("read_dataset関数が正しく動作する", {
+  # テスト用データの作成
+  test_data <- data.frame(
+    Name = c("John", "Jane", "Mike", NA),
+    Age = c(25, 30, NA, 40),
+    Score = c(85, 90, 78, 92)
+  )
+  
+  # テスト用CSVの保存
+  test_file <- tempfile(fileext = ".csv")
+  write.csv(test_data, test_file, row.names = FALSE)
+  
+  # 関数の実行（clean = FALSE）
+  result1 <- read_dataset(test_file, clean = FALSE)
+  expect_equal(nrow(result1), 4)
+  expect_equal(ncol(result1), 3)
+  
+  # 関数の実行（clean = TRUE）
+  result2 <- read_dataset(test_file, clean = TRUE)
+  expect_equal(nrow(result2), 2)  # 欠損値のある行が削除されるはず
+  expect_equal(ncol(result2), 3)
+  
+  # 列名が小文字になっているか確認
+  expect_equal(names(result2), c("name", "age", "score"))
+  
+  # テスト用ファイルの削除
+  unlink(test_file)
+})
+
+test_that("plot_scatter関数が正しく動作する", {
+  # テスト用データ
+  test_data <- data.frame(
+    x = 1:5,
+    y = 2:6,
+    group = c("A", "A", "B", "B", "C")
+  )
+  
+  # プロットの作成（color無し）
+  p1 <- plot_scatter(test_data, "x", "y")
+  expect_s3_class(p1, "gg")
+  expect_equal(p1$labels$title, "y vs x")
+  
+  # プロットの作成（color有り）
+  p2 <- plot_scatter(test_data, "x", "y", "group")
+  expect_s3_class(p2, "gg")
+  expect_equal(p2$labels$title, "y vs x")
+  expect_equal(p2$mapping$colour, rlang::quo(group))
+}) 

@@ -1,0 +1,44 @@
+# サンプル分析スクリプト
+# renvの確認
+if (!"renv" %in% installed.packages()[, "Package"]) {
+  install.packages("renv")
+}
+
+# プロジェクト関数の読み込み
+source("R/functions.R")
+
+# 必要なパッケージのロード
+library(tidyverse)
+
+# サンプルデータの作成（実際のプロジェクトではCSVから読み込む）
+set.seed(123)
+sample_data <- data.frame(
+  x = rnorm(100),
+  y = rnorm(100),
+  group = sample(c("A", "B", "C"), 100, replace = TRUE)
+)
+
+# データをCSVとして保存
+write.csv(sample_data, "data/sample_data.csv", row.names = FALSE)
+
+# データの読み込みと前処理（自作関数を使用）
+cleaned_data <- read_dataset("data/sample_data.csv", clean = TRUE)
+
+# 基本的な分析
+summary(cleaned_data)
+
+# 相関分析
+cor_result <- cor(cleaned_data$x, cleaned_data$y)
+cat("相関係数:", cor_result, "\n")
+
+# 視覚化（自作関数を使用）
+p <- plot_scatter(cleaned_data, "x", "y", "group")
+print(p)
+
+# 結果の保存
+ggsave("results/scatter_plot.png", p, width = 8, height = 6)
+
+# セッション情報の保存
+sink("results/session_info.txt")
+sessionInfo()
+sink() 
