@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.CONFIG = void 0;
+exports.forTesting = exports.CONFIG = void 0;
 exports.activate = activate;
 exports.preflightChecks = preflightChecks;
 exports.pullDockerImage = pullDockerImage;
@@ -45,6 +45,7 @@ exports.showDockerNotInstalledError = showDockerNotInstalledError;
 exports.checkDockerPermissions = checkDockerPermissions;
 exports.showDockerPermissionError = showDockerPermissionError;
 exports.deactivate = deactivate;
+exports.getResourceUri = getResourceUri;
 exports.setupDevContainer = setupDevContainer;
 exports.openFolderInContainer = openFolderInContainer;
 exports.generateDockerCompose = generateDockerCompose;
@@ -56,6 +57,9 @@ exports.generateDockerComposeFiles = generateDockerComposeFiles;
 exports.startWorkEnv = startWorkEnv;
 exports.executeDockerCommand = executeDockerCommand;
 exports.resetWorkEnvConfig = resetWorkEnvConfig;
+exports.showDockerInstallPrompt = showDockerInstallPrompt;
+exports.installDockerWithProgress = installDockerWithProgress;
+exports.validateSettings = validateSettings;
 const vscode = __importStar(require("vscode"));
 const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
@@ -63,11 +67,17 @@ const child_process_1 = require("child_process");
 const util_1 = require("util");
 const os = __importStar(require("os"));
 const error_handlers_1 = require("./error-handlers");
+const dockerInstaller = __importStar(require("./docker-installer"));
 const execPromise = (0, util_1.promisify)(child_process_1.exec);
 // 設定関連の定数
 exports.CONFIG = {
     DOCKER_IMAGE: 'kokeh/hu_bioinfo:stable',
-    CONTAINER_NAME_FILTERS: ['hu-bioinfo-workshop', 'work-env']
+    CONTAINER_NAME_FILTERS: ['hu-bioinfo-workshop', 'work-env'],
+    // Remote Containers拡張のIDは複数の可能性があるため配列で定義
+    REMOTE_CONTAINERS_IDS: [
+        'ms-vscode-remote.remote-containers',
+        'ms-vscode-remote.remote-containers-nightly'
+    ]
 };
 /**
  * エクステンションアクティベーション時の処理
@@ -89,7 +99,7 @@ function activate(context) {
             }
             // .devcontainer の設定
             if (!fs.existsSync(devcontainerPath)) {
-                vscode.window.showInformationMessage(".devcontainerを設定中...");
+                vscode.window.showInformationMessage("[work-env] .devcontainerを設定中...");
                 setupDevContainer(context, devcontainerPath);
             }
             if (!fs.existsSync(dockercomposeFilePath)) {
@@ -107,7 +117,7 @@ function activate(context) {
                 (0, error_handlers_1.handleDockerError)(error);
             }
             else {
-                vscode.window.showErrorMessage(`エラー: ${errorMessage}`);
+                vscode.window.showErrorMessage(`[work-env] エラー: ${errorMessage}`);
             }
         }
     });
@@ -141,7 +151,7 @@ function activate(context) {
                 (0, error_handlers_1.handleDockerError)(error);
             }
             else {
-                vscode.window.showErrorMessage(`エラー: ${errorMessage}`);
+                vscode.window.showErrorMessage(`[work-env] エラー: ${errorMessage}`);
             }
         }
     });
@@ -160,7 +170,12 @@ async function preflightChecks() {
     }
     // Dockerがインストールされているか確認
     if (!await isDockerInstalled()) {
-        showDockerNotInstalledError();
+        // Docker未インストールの場合、インストールを提案
+        const installDocker = await showDockerInstallPrompt();
+        if (installDocker) {
+            // インストールを実行し、その結果を返す
+            return await installDockerWithProgress();
+        }
         return false;
     }
     // Dockerの権限を確認
@@ -177,7 +192,7 @@ async function preflightChecks() {
  */
 async function pullDockerImage(imageName) {
     try {
-        vscode.window.showInformationMessage(`Dockerイメージ ${imageName} を取得中...`);
+        vscode.window.showInformationMessage(`[work-env] Dockerイメージ ${imageName} を取得中...`);
         await execPromise(`docker pull ${imageName}`);
         return true;
     }
@@ -205,12 +220,26 @@ async function removeExistingContainers(nameFilters) {
 }
 // Remote Containers拡張機能がインストールされているかを確認する関数
 async function isRemoteContainersInstalled() {
-    const extension = vscode.extensions.getExtension('ms-vscode-remote.remote-containers');
-    return !!extension;
+    try {
+        // コマンドラインでチェック
+        try {
+            // remote-containersを含む拡張機能をチェック
+            const { stdout } = await execPromise('code --list-extensions | grep -i "remote-containers"');
+            return stdout.trim().length > 0;
+        }
+        catch (cmdError) {
+            // コマンド実行エラーの場合は失敗とみなす（grepでマッチしない場合もエラーになるため）
+            return false;
+        }
+    }
+    catch (error) {
+        vscode.window.showWarningMessage(`[work-env] Remote Containers拡張機能の確認中にエラーが発生しました: ${(0, error_handlers_1.parseErrorMessage)(error)}`);
+        return false;
+    }
 }
 // Remote Containers拡張機能がインストールされていない場合のエラーメッセージを表示
 function showRemoteContainersNotInstalledError() {
-    const message = 'Remote Containers拡張機能がインストールされていません。この拡張機能を使用する前にインストールしてください。';
+    const message = '[work-env] Remote Containers拡張機能がインストールされていません。この拡張機能を使用する前にインストールしてください。';
     const installButton = '拡張機能をインストール';
     vscode.window.showErrorMessage(message, installButton).then(selection => {
         if (selection === installButton) {
@@ -230,7 +259,7 @@ async function isDockerInstalled() {
 }
 // Dockerがインストールされていない場合のエラーメッセージを表示
 function showDockerNotInstalledError() {
-    const message = 'Dockerがインストールされていません。この拡張機能を使用する前にDockerをインストールしてください。';
+    const message = '[work-env] Dockerがインストールされていません。この拡張機能を使用する前にDockerをインストールしてください。';
     const installButton = 'インストールガイド';
     vscode.window.showErrorMessage(message, installButton).then(selection => {
         if (selection === installButton) {
@@ -256,7 +285,7 @@ async function checkDockerPermissions() {
 }
 // Dockerの権限エラーの場合のメッセージを表示
 function showDockerPermissionError() {
-    const message = 'Dockerの実行権限がありません。';
+    const message = '[work-env] Dockerの実行権限がありません。';
     const helpButton = '対処方法を確認';
     let helpMessage = '';
     if (os.platform() === 'linux') {
@@ -276,14 +305,37 @@ function showDockerPermissionError() {
 }
 // This method is called when your extension is deactivated
 function deactivate() { }
+/**
+ * リソースファイルのURIを取得する
+ * @param context VS Codeのエクステンションコンテキスト
+ * @param relativePath リソースフォルダからの相対パス
+ * @returns リソースファイルのURI
+ */
+function getResourceUri(context, relativePath) {
+    return vscode.Uri.joinPath(context.extensionUri, 'resources', relativePath);
+}
 // .devcontainerフォルダをセットアップする関数
 function setupDevContainer(context, targetPath) {
     try {
-        const sourcePath = path.join(context.extensionUri.fsPath, ".devcontainer");
-        copyFolderRecursiveSync(sourcePath, targetPath);
+        // .devcontainerディレクトリが存在しない場合は作成
+        if (!fs.existsSync(targetPath)) {
+            fs.mkdirSync(targetPath, { recursive: true });
+        }
+        // devcontainer.json.templateからdevcontainer.jsonを生成
+        const devcontainerJsonTemplateUri = getResourceUri(context, 'templates/devcontainer_template/devcontainer.json.template');
+        const devcontainerJsonPath = path.join(targetPath, "devcontainer.json");
+        try {
+            const template = fs.readFileSync(devcontainerJsonTemplateUri.fsPath, 'utf8');
+            fs.writeFileSync(devcontainerJsonPath, template);
+            vscode.window.showInformationMessage("[work-env] devcontainer.jsonを作成しました");
+        }
+        catch (err) {
+            throw new Error(`devcontainer.json.templateが見つかりません: ${(0, error_handlers_1.parseErrorMessage)(err)}`);
+        }
     }
     catch (error) {
         (0, error_handlers_1.handleFileSystemError)(error);
+        vscode.window.showErrorMessage(`[work-env] devcontainer設定の作成中にエラーが発生しました: ${(0, error_handlers_1.parseErrorMessage)(error)}`);
     }
 }
 // コンテナでフォルダを開く関数
@@ -293,23 +345,31 @@ function openFolderInContainer(extensionStoragePath) {
         then(() => {
         // トークンは使用しないが、APIの要件として必要
     }, (error) => {
-        vscode.window.showErrorMessage(`コンテナでフォルダを開くことができませんでした: ${(0, error_handlers_1.parseErrorMessage)(error)}`);
+        vscode.window.showErrorMessage(`[work-env] コンテナでフォルダを開くことができませんでした: ${(0, error_handlers_1.parseErrorMessage)(error)}`);
     });
 }
 // Docker Composeファイルを生成する関数
 async function generateDockerCompose(context, dockercomposeFilePath) {
-    const templatePath = path.join(context.extensionUri.fsPath, "docker-compose.templete.yml");
-    // 設定情報の収集
-    const config = await collectDockerComposeConfig();
-    if (!config) {
+    const templateUri = getResourceUri(context, 'templates/devcontainer_template/docker-compose.yml.template');
+    // テンプレートファイルの存在確認
+    try {
+        const templatePath = templateUri.fsPath;
+        // 設定情報の収集
+        const config = await collectDockerComposeConfig();
+        if (!config) {
+            return false;
+        }
+        // ファイルアクセス権の設定
+        if (!await setupFolderPermissions(config.projectFolder, config.cacheFolder)) {
+            return false;
+        }
+        // テンプレートファイルの処理
+        return processTemplateFile(templatePath, dockercomposeFilePath, config);
+    }
+    catch (error) {
+        vscode.window.showErrorMessage(`[work-env] docker-compose.yml.templateが見つかりません: ${(0, error_handlers_1.parseErrorMessage)(error)}`);
         return false;
     }
-    // ファイルアクセス権の設定
-    if (!await setupFolderPermissions(config.projectFolder, config.cacheFolder)) {
-        return false;
-    }
-    // テンプレートファイルの処理
-    return processTemplateFile(templatePath, dockercomposeFilePath, config);
 }
 // Docker Compose設定情報を収集する関数
 async function collectDockerComposeConfig() {
@@ -320,7 +380,7 @@ async function collectDockerComposeConfig() {
         openLabel: "Select Project Folder"
     });
     if (!projectFolderUri || projectFolderUri.length === 0) {
-        vscode.window.showErrorMessage("プロジェクトフォルダが選択されていません。");
+        vscode.window.showErrorMessage("[work-env] プロジェクトフォルダが選択されていません。");
         return null;
     }
     const projectFolder = projectFolderUri[0].fsPath;
@@ -331,7 +391,7 @@ async function collectDockerComposeConfig() {
         openLabel: "Select Cache Folder"
     });
     if (!cacheFolderUri || cacheFolderUri.length === 0) {
-        vscode.window.showErrorMessage("キャッシュフォルダが選択されていません。");
+        vscode.window.showErrorMessage("[work-env] キャッシュフォルダが選択されていません。");
         return null;
     }
     const cacheFolder = cacheFolderUri[0].fsPath;
@@ -343,7 +403,7 @@ async function collectDockerComposeConfig() {
         validateInput: error_handlers_1.validateInput
     });
     if (!githubPat) {
-        vscode.window.showErrorMessage("GitHub PATが必要です。");
+        vscode.window.showErrorMessage("[work-env] GitHub PATが必要です。");
         return null;
     }
     return { projectFolder, cacheFolder, githubPat };
@@ -358,7 +418,7 @@ async function setupFolderPermissions(projectFolder, cacheFolder) {
         return true;
     }
     catch (error) {
-        vscode.window.showErrorMessage(`権限エラー: フォルダのアクセス権を変更できません。${(0, error_handlers_1.parseErrorMessage)(error)}`);
+        vscode.window.showErrorMessage(`[work-env] 権限エラー: フォルダのアクセス権を変更できません。${(0, error_handlers_1.parseErrorMessage)(error)}`);
         return false;
     }
 }
@@ -371,18 +431,38 @@ function processTemplateFile(templatePath, outputPath, config) {
             PROJECT_FOLDER: config.projectFolder
         };
         // テンプレートファイルを読み込む
-        let template = fs.readFileSync(templatePath, 'utf8');
+        let template;
+        try {
+            template = fs.readFileSync(templatePath, 'utf8');
+        }
+        catch (err) {
+            vscode.window.showErrorMessage(`[work-env] テンプレートファイルの読み込みに失敗しました: ${(0, error_handlers_1.parseErrorMessage)(err)}`);
+            return false;
+        }
         // プレースホルダーを置換
         Object.entries(replacements).forEach(([key, value]) => {
             const regex = new RegExp(`{{${key}}}`, 'g'); // `{{GITHUB_PAT}}` のようなパターンを探す
             template = template.replace(regex, value);
         });
-        fs.writeFileSync(outputPath, template.trim());
-        return true; // 成功
+        // 出力ディレクトリの確保
+        const outputDir = path.dirname(outputPath);
+        if (!fs.existsSync(outputDir)) {
+            fs.mkdirSync(outputDir, { recursive: true });
+        }
+        // ファイル書き込み
+        try {
+            fs.writeFileSync(outputPath, template.trim());
+            vscode.window.showInformationMessage(`[work-env] 設定ファイルを生成しました: ${path.basename(outputPath)}`);
+            return true; // 成功
+        }
+        catch (err) {
+            vscode.window.showErrorMessage(`[work-env] 設定ファイルの書き込みに失敗しました: ${(0, error_handlers_1.parseErrorMessage)(err)}`);
+            return false;
+        }
     }
     catch (error) {
         (0, error_handlers_1.handleFileSystemError)(error);
-        vscode.window.showErrorMessage(`docker-compose.ymlの生成中にエラーが発生しました。`);
+        vscode.window.showErrorMessage(`[work-env] 設定ファイルの生成中にエラーが発生しました: ${(0, error_handlers_1.parseErrorMessage)(error)}`);
         return false; // 失敗
     }
 }
@@ -438,7 +518,7 @@ services:
     }
     catch (error) {
         (0, error_handlers_1.handleFileSystemError)(error);
-        vscode.window.showErrorMessage(`Docker Composeファイルの生成に失敗しました: ${(0, error_handlers_1.parseErrorMessage)(error)}`);
+        vscode.window.showErrorMessage(`[work-env] Docker Composeファイルの生成に失敗しました: ${(0, error_handlers_1.parseErrorMessage)(error)}`);
         return false;
     }
 }
@@ -462,7 +542,7 @@ async function startWorkEnv() {
         const dockercomposeFilePath = path.join(devcontainerPath, "docker-compose.yml");
         // .devcontainer の設定
         if (!fs.existsSync(devcontainerPath)) {
-            vscode.window.showInformationMessage(".devcontainerを設定中...");
+            vscode.window.showInformationMessage("[work-env] .devcontainerを設定中...");
             setupDevContainer({ extensionUri: context, globalStorageUri: storageUri, subscriptions: [] }, devcontainerPath);
         }
         // 設定情報を収集してDocker Composeファイルを生成
@@ -481,7 +561,7 @@ async function startWorkEnv() {
             (0, error_handlers_1.handleDockerError)(error);
         }
         else {
-            vscode.window.showErrorMessage(`エラー: ${errorMessage}`);
+            vscode.window.showErrorMessage(`[work-env] エラー: ${errorMessage}`);
         }
     }
 }
@@ -500,7 +580,7 @@ async function executeDockerCommand(command) {
             (0, error_handlers_1.handleDockerError)(error);
         }
         else {
-            vscode.window.showErrorMessage(`コマンド実行エラー: ${(0, error_handlers_1.parseErrorMessage)(error)}`);
+            vscode.window.showErrorMessage(`[work-env] コマンド実行エラー: ${(0, error_handlers_1.parseErrorMessage)(error)}`);
         }
         return null;
     }
@@ -522,10 +602,66 @@ async function resetWorkEnvConfig() {
         }
         // コンテナの削除
         await removeExistingContainers(exports.CONFIG.CONTAINER_NAME_FILTERS);
-        vscode.window.showInformationMessage("設定をリセットしました。");
+        vscode.window.showInformationMessage("[work-env] 設定をリセットしました。");
     }
     catch (error) {
-        vscode.window.showErrorMessage(`設定のリセットに失敗しました: ${(0, error_handlers_1.parseErrorMessage)(error)}`);
+        vscode.window.showErrorMessage(`[work-env] 設定のリセットに失敗しました: ${(0, error_handlers_1.parseErrorMessage)(error)}`);
     }
 }
+// Dockerがインストールされていない場合のプロンプト表示
+async function showDockerInstallPrompt() {
+    const message = 'Dockerがインストールされていません。自動的にインストールしますか？';
+    const installButton = 'インストールする';
+    const cancelButton = 'キャンセル';
+    const selection = await vscode.window.showInformationMessage(message, { modal: true }, installButton, cancelButton);
+    return selection === installButton;
+}
+// Dockerインストールの実行
+async function installDockerWithProgress() {
+    // OS情報の検出
+    const osInfo = dockerInstaller.detectOS();
+    // Linuxの場合はディストリビューション情報も取得
+    if (osInfo.platform === 'linux') {
+        osInfo.distro = await dockerInstaller.detectLinuxDistro();
+    }
+    // Dockerインストール実行
+    const result = await dockerInstaller.installDocker(osInfo);
+    if (result.success) {
+        vscode.window.showInformationMessage(`[work-env] ${result.message}`);
+        return true;
+    }
+    else {
+        if (result.details) {
+            vscode.window.showErrorMessage(`[work-env] ${result.message}: ${result.details}`);
+        }
+        else {
+            vscode.window.showErrorMessage(`[work-env] ${result.message}`);
+        }
+        return false;
+    }
+}
+// Export function for E2E testing
+/**
+ * 設定のバリデーションを行う（E2Eテスト用）
+ * @returns 設定が有効な場合はtrue、そうでない場合はfalse
+ */
+async function validateSettings() {
+    try {
+        const config = await collectDockerComposeConfig();
+        return config !== null;
+    }
+    catch (error) {
+        vscode.window.showErrorMessage(`[work-env] 設定のバリデーションに失敗しました: ${(0, error_handlers_1.parseErrorMessage)(error)}`);
+        return false;
+    }
+}
+// E2Eテスト用のエクスポート
+// 統合テストで使用する関数をここでエクスポート
+exports.forTesting = {
+    validateSettings,
+    collectDockerComposeConfig,
+    isDockerInstalled,
+    isRemoteContainersInstalled,
+    preflightChecks
+};
 //# sourceMappingURL=extension.js.map

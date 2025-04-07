@@ -65,16 +65,27 @@ const util_1 = require("util");
 const os = __importStar(require("os"));
 const sinon = __importStar(require("sinon"));
 const assert_1 = __importDefault(require("assert"));
-// テスト環境でない場合のみ実際のVSCodeをインポート
-const vscodeModule = process.env.NODE_ENV !== 'test'
-    ? require('vscode')
-    : {
+// 環境変数でモックモードと統合テストモードを切り替え
+const USE_MOCK = process.env.VSCODE_MOCK === '1';
+console.log(`テストヘルパー: ${USE_MOCK ? 'モックモード' : '実際のVS Code APIを使用'}`);
+let vscodeModule;
+// モックモードの場合はモックを使用、そうでない場合は実際のVS Code APIを使用
+if (USE_MOCK) {
+    // モックモード - Sinonスタブを使用
+    vscodeModule = {
         window: {
             showInformationMessage: sinon.stub(),
             showErrorMessage: sinon.stub(),
             showInputBox: sinon.stub(),
             showOpenDialog: sinon.stub(),
-            activeTerminal: null
+            activeTerminal: null,
+            createOutputChannel: sinon.stub().returns({
+                appendLine: sinon.stub(),
+                append: sinon.stub(),
+                show: sinon.stub(),
+                dispose: sinon.stub()
+            }),
+            showWarningMessage: sinon.stub()
         },
         commands: {
             executeCommand: sinon.stub(),
@@ -88,10 +99,56 @@ const vscodeModule = process.env.NODE_ENV !== 'test'
         },
         Uri: {
             file: sinon.stub(),
-            parse: sinon.stub()
+            parse: sinon.stub(),
+            joinPath: sinon.stub()
         },
-        ExtensionContext: {}
+        ExtensionContext: {},
+        workspace: {
+            getConfiguration: sinon.stub().returns({
+                get: sinon.stub(),
+                update: sinon.stub()
+            }),
+            workspaceFolders: []
+        }
     };
+}
+else {
+    // 統合テストモード - 実際のVS Code APIを使用
+    try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        vscodeModule = require('vscode');
+        console.log('実際のVS Code APIを読み込みました');
+    }
+    catch (error) {
+        console.error('VS Code APIの読み込みに失敗しました:', error);
+        // エラー時はモックにフォールバック
+        vscodeModule = {
+            window: {
+                showInformationMessage: () => Promise.resolve(undefined),
+                showErrorMessage: () => Promise.resolve(undefined),
+                showInputBox: () => Promise.resolve(undefined),
+                showOpenDialog: () => Promise.resolve(undefined),
+                activeTerminal: null
+            },
+            commands: {
+                executeCommand: () => Promise.resolve(undefined),
+                registerCommand: () => ({ dispose: () => { } })
+            },
+            extensions: {
+                getExtension: () => undefined
+            },
+            env: {
+                openExternal: () => Promise.resolve(false)
+            },
+            Uri: {
+                file: (path) => ({ fsPath: path }),
+                parse: (uri) => ({ toString: () => uri }),
+                joinPath: (...args) => ({ fsPath: args.join('/') })
+            },
+            ExtensionContext: {}
+        };
+    }
+}
 // vscodeをエクスポート
 exports.vscode = vscodeModule;
 const execPromise = (0, util_1.promisify)(child_process_1.exec);
@@ -145,14 +202,29 @@ exports.mockVscode = {
 // jest.mock('vscode', () => mockVscode, { virtual: true });
 // テストユーティリティ関数
 function resetAllMocks() {
-    // すべてのモック関数をリセット
-    sinon.reset();
-    // 特定のメソッドを明示的にリセット
-    exports.vscode.window.showErrorMessage.resetHistory();
-    exports.vscode.window.showInformationMessage.resetHistory();
-    exports.vscode.commands.executeCommand.resetHistory();
-    exports.vscode.extensions.getExtension.resetHistory();
-    // 必要に応じて他のメソッドもリセット
+    // モックモードの場合のみモックをリセット
+    if (USE_MOCK) {
+        // すべてのモック関数をリセット
+        sinon.reset();
+        // 特定のメソッドを明示的にリセット
+        if (exports.vscode.window.showErrorMessage?.resetHistory) {
+            exports.vscode.window.showErrorMessage.resetHistory();
+        }
+        if (exports.vscode.window.showInformationMessage?.resetHistory) {
+            exports.vscode.window.showInformationMessage.resetHistory();
+        }
+        if (exports.vscode.commands.executeCommand?.resetHistory) {
+            exports.vscode.commands.executeCommand.resetHistory();
+        }
+        if (exports.vscode.extensions.getExtension?.resetHistory) {
+            exports.vscode.extensions.getExtension.resetHistory();
+        }
+        // 必要に応じて他のメソッドもリセット
+    }
+    else {
+        // 統合テストモードではリセット不要（実際のAPIを使用）
+        console.log('統合テストモードではモックをリセットしません');
+    }
 }
 // 非同期処理のテスト用ユーティリティ
 function waitForPromise(ms = 0) {
@@ -244,10 +316,10 @@ function setupDevContainer(context, targetPath) {
     copyFolderRecursiveSync(sourcePath, targetPath);
 }
 function openFolderInContainer(extensionStoragePath) {
-    const folderUri = vscodeModule.Uri.file(extensionStoragePath);
-    vscodeModule.commands.executeCommand("remote-containers.openFolder", folderUri).then(() => {
+    const folderUri = exports.vscode.Uri.file(extensionStoragePath);
+    exports.vscode.commands.executeCommand("remote-containers.openFolder", folderUri).then(() => {
     }, (error) => {
-        vscodeModule.window.showErrorMessage(`コンテナでフォルダを開くことができませんでした: ${error.message}`);
+        exports.vscode.window.showErrorMessage(`コンテナでフォルダを開くことができませんでした: ${error.message}`);
     });
 }
 // Docker Composeテンプレートを生成する関数 (テスト用シンプル実装)
@@ -313,33 +385,24 @@ exports.fsMock = {
         isDirectory: sinon.stub().returns(false)
     })
 };
-// モック状態をリセットする関数
+// VSCodeモックのリセット（主要なメソッドのみ）
 function resetMocks() {
-    // すべてのモックをリセット（重要: これによりすべてのスタブとスパイがリセットされます）
-    sinon.reset();
-    // VSCode関連のモック履歴をリセット
-    vscodeModule.window.showErrorMessage.resetHistory();
-    vscodeModule.window.showInformationMessage.resetHistory();
-    vscodeModule.window.showInputBox.resetHistory();
-    vscodeModule.window.showOpenDialog.resetHistory();
-    vscodeModule.commands.registerCommand.resetHistory();
-    vscodeModule.commands.executeCommand.resetHistory();
-    vscodeModule.extensions.getExtension.resetHistory();
-    vscodeModule.env.openExternal.resetHistory();
-    vscodeModule.Uri.file.resetHistory();
-    vscodeModule.Uri.parse.resetHistory();
-    // その他の依存モック履歴をリセット
-    exports.childProcess.exec.resetHistory();
-    // ファイルシステムモック履歴をリセット
-    exports.fsMock.existsSync.resetHistory();
-    exports.fsMock.mkdirSync.resetHistory();
-    exports.fsMock.writeFileSync.resetHistory();
-    exports.fsMock.readFileSync.resetHistory();
-    exports.fsMock.readdirSync.resetHistory();
-    exports.fsMock.copyFileSync.resetHistory();
-    exports.fsMock.lstatSync.resetHistory();
-    // スタブとモックに初期値を再設定
-    initializeDefaultStubs();
+    if (USE_MOCK) {
+        // モックモードの場合のみモックをリセット
+        // VSCodeメソッドのモックリセット
+        if (exports.vscode.window.showErrorMessage?.resetHistory) {
+            exports.vscode.window.showErrorMessage.resetHistory();
+        }
+        if (exports.vscode.window.showInformationMessage?.resetHistory) {
+            exports.vscode.window.showInformationMessage.resetHistory();
+        }
+        // デフォルト動作を再設定
+        initializeDefaultStubs();
+    }
+    else {
+        // 統合テストモードではリセット不要
+        console.log('統合テストモードではモックをリセットしません');
+    }
 }
 // デフォルトのスタブ値を初期化する補助関数
 function initializeDefaultStubs() {
@@ -420,45 +483,69 @@ function mockDockerFailure(errorMsg = 'Docker command failed') {
 }
 // プロジェクトフォルダ選択のモック
 function mockProjectFolderSelection(folderPath = '/test/project') {
-    // 既存のモックをリセット
-    exports.vscode.window.showOpenDialog.reset();
-    exports.vscode.window.showOpenDialog.resolves([{ fsPath: folderPath }]);
-    // コールバック関数を適切に設定
-    exports.vscode.window.showOpenDialog.callsFake((options) => {
-        return Promise.resolve([{ fsPath: folderPath }]);
-    });
+    // モックモードの場合のみStubを操作
+    if (USE_MOCK) {
+        // 既存のモックをリセット
+        exports.vscode.window.showOpenDialog.reset();
+        exports.vscode.window.showOpenDialog.resolves([{ fsPath: folderPath }]);
+        // コールバック関数を適切に設定
+        exports.vscode.window.showOpenDialog.callsFake((options) => {
+            return Promise.resolve([{ fsPath: folderPath }]);
+        });
+    }
+    else {
+        console.log('統合テストモードではmockProjectFolderSelectionは実際には何もしません');
+    }
 }
 // キャッシュフォルダ選択のモック
 function mockCacheFolderSelection(folderPath = '/test/cache') {
-    // 既存のモックをリセット
-    exports.vscode.window.showOpenDialog.reset();
-    exports.vscode.window.showOpenDialog.resolves([{ fsPath: folderPath }]);
-    // コールバック関数を適切に設定
-    exports.vscode.window.showOpenDialog.callsFake((options) => {
-        return Promise.resolve([{ fsPath: folderPath }]);
-    });
+    // モックモードの場合のみStubを操作
+    if (USE_MOCK) {
+        // 既存のモックをリセット
+        exports.vscode.window.showOpenDialog.reset();
+        exports.vscode.window.showOpenDialog.resolves([{ fsPath: folderPath }]);
+        // コールバック関数を適切に設定
+        exports.vscode.window.showOpenDialog.callsFake((options) => {
+            return Promise.resolve([{ fsPath: folderPath }]);
+        });
+    }
+    else {
+        console.log('統合テストモードではmockCacheFolderSelectionは実際には何もしません');
+    }
 }
 // GitHub PATの入力モック
 function mockGitHubPatInput(pat = 'fake-github-pat') {
-    // 既存のモックをリセット
-    exports.vscode.window.showInputBox.reset();
-    exports.vscode.window.showInputBox.resolves(pat);
-    // 明示的にスタブを設定
-    exports.vscode.window.showInputBox.callsFake((options) => {
-        return Promise.resolve(pat);
-    });
+    // モックモードの場合のみStubを操作
+    if (USE_MOCK) {
+        // 既存のモックをリセット
+        exports.vscode.window.showInputBox.reset();
+        exports.vscode.window.showInputBox.resolves(pat);
+        // 明示的にスタブを設定
+        exports.vscode.window.showInputBox.callsFake((options) => {
+            return Promise.resolve(pat);
+        });
+    }
+    else {
+        console.log('統合テストモードではmockGitHubPatInputは実際には何もしません');
+    }
 }
 // Remote Containers拡張機能の有無をモック
 function mockRemoteContainersExtension(installed = true) {
-    // 既存のモックをリセット
-    exports.vscode.extensions.getExtension.reset();
-    // 明示的にスタブを設定
-    exports.vscode.extensions.getExtension.callsFake((extensionId) => {
-        if (extensionId === 'ms-vscode-remote.remote-containers') {
-            return installed ? { id: 'ms-vscode-remote.remote-containers' } : undefined;
-        }
-        return undefined;
-    });
+    // モックモードの場合のみStubを操作
+    if (USE_MOCK) {
+        // 既存のモックをリセット
+        exports.vscode.extensions.getExtension.reset();
+        // 明示的にスタブを設定
+        exports.vscode.extensions.getExtension.callsFake((extensionId) => {
+            if (extensionId === 'ms-vscode-remote.remote-containers') {
+                return installed ? { id: 'ms-vscode-remote.remote-containers' } : undefined;
+            }
+            return undefined;
+        });
+    }
+    else {
+        console.log('統合テストモードではmockRemoteContainersExtensionは実際には何もしません');
+    }
 }
 // アサーション用のヘルパー
 exports.expectation = {

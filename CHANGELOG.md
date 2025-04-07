@@ -4,6 +4,28 @@ All notable changes to the "work-env" extension will be documented in this file.
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.1.3] - 2025-04-08
+
+### Added
+
+- LICENSEファイルの追加（MIT License）
+- エラーメッセージの明確化
+  - すべてのメッセージに `[work-env]` プレフィックスを追加
+  - 発信元を識別しやすくするためのメッセージ改善
+
+### Improved
+
+- 拡張機能の動作改善
+  - Remote Containers拡張機能の確認方法を改善
+  - エラーハンドリングの強化
+  - ユーザーエクスペリエンスの向上
+
+### Fixed
+
+- 拡張機能のコンパイルとパッケージングに関する問題を修正
+  - VSIX作成時の警告対応
+  - 適切なライセンス情報の提供
+
 ## [1.1.2] - 2025-04-06
 
 ### Added

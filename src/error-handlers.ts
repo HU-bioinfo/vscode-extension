@@ -70,25 +70,24 @@ export function isDockerError(error: any): boolean {
 }
 
 /**
- * Docker関連のエラーを処理する
+ * Dockerエラーを処理する
  * @param error Dockerエラー
  */
 export function handleDockerError(error: any): void {
     const message = parseErrorMessage(error).toLowerCase();
     
-    if (message.includes('docker: command not found') || message.includes('command not found: docker')) {
-        vscode.window.showErrorMessage('Dockerがインストールされていません。Dockerをインストールしてください。');
-    } else if (message.includes('error during connect') || 
-        message.includes('cannot connect to the docker daemon') || 
-        message.includes('daemon is not running')) {
-        vscode.window.showErrorMessage('Dockerデーモンが実行されていません。Dockerデーモンを起動してください。');
-    } else if (message.includes('permission denied while trying to connect') || 
-        message.includes('permission denied')) {
-        vscode.window.showErrorMessage('Dockerを実行する権限がありません。ユーザーをDockerグループに追加するか、管理者権限で実行してください。');
-    } else if (message.includes('not found')) {
-        vscode.window.showErrorMessage('Dockerイメージまたはコンテナが見つかりません。イメージ名やタグを確認してください。');
+    if (message.includes('not installed') || message.includes('command not found')) {
+        vscode.window.showErrorMessage('[work-env] Dockerがインストールされていません。Dockerをインストールしてください。');
+    }
+    else if (message.includes('daemon') || message.includes('service')) {
+        vscode.window.showErrorMessage('[work-env] Dockerデーモンが実行されていません。Dockerデーモンを起動してください。');
+    }
+    else if (message.includes('permission') || message.includes('denied') || message.includes('access')) {
+        vscode.window.showErrorMessage('[work-env] Dockerを実行する権限がありません。ユーザーをDockerグループに追加するか、管理者権限で実行してください。');
+    } else if (message.includes('no such') || message.includes('not found')) {
+        vscode.window.showErrorMessage('[work-env] Dockerイメージまたはコンテナが見つかりません。イメージ名やタグを確認してください。');
     } else {
-        vscode.window.showErrorMessage(`Dockerコマンドの実行中にエラーが発生しました: ${message}`);
+        vscode.window.showErrorMessage(`[work-env] Dockerコマンドの実行中にエラーが発生しました: ${message}`);
     }
 }
 
@@ -113,11 +112,11 @@ export function handleDockerComposeError(error: any): void {
     const message = parseErrorMessage(error).toLowerCase();
     
     if (message.includes('version not found')) {
-        vscode.window.showErrorMessage('Docker Composeのバージョンが古いか、互換性がありません。Docker Composeを更新してください。');
+        vscode.window.showErrorMessage('[work-env] Docker Composeのバージョンが古いか、互換性がありません。Docker Composeを更新してください。');
     } else if (message.includes('file not found')) {
-        vscode.window.showErrorMessage('docker-compose.ymlファイルが見つかりません。設定を確認してください。');
+        vscode.window.showErrorMessage('[work-env] docker-compose.ymlファイルが見つかりません。設定を確認してください。');
     } else {
-        vscode.window.showErrorMessage(`Docker Composeコマンドの実行中にエラーが発生しました: ${message}`);
+        vscode.window.showErrorMessage(`[work-env] Docker Composeコマンドの実行中にエラーが発生しました: ${message}`);
     }
 }
 
@@ -129,13 +128,13 @@ export function handleFileSystemError(error: any): void {
     const message = parseErrorMessage(error).toLowerCase();
     
     if (message.includes('permission denied')) {
-        vscode.window.showErrorMessage('ファイルへのアクセス権限がありません。管理者権限で実行するか、ファイルのアクセス権を確認してください。');
+        vscode.window.showErrorMessage('[work-env] ファイルへのアクセス権限がありません。管理者権限で実行するか、ファイルのアクセス権を確認してください。');
     } else if (message.includes('no such file') || message.includes('not found')) {
-        vscode.window.showErrorMessage('ファイルまたはディレクトリが見つかりません。パスを確認してください。');
+        vscode.window.showErrorMessage('[work-env] ファイルまたはディレクトリが見つかりません。パスを確認してください。');
     } else if (message.includes('already exists')) {
-        vscode.window.showErrorMessage('ファイルまたはディレクトリがすでに存在します。');
+        vscode.window.showErrorMessage('[work-env] ファイルまたはディレクトリがすでに存在します。');
     } else {
-        vscode.window.showErrorMessage(`ファイル操作中にエラーが発生しました: ${message}`);
+        vscode.window.showErrorMessage(`[work-env] ファイル操作中にエラーが発生しました: ${message}`);
     }
 }
 
@@ -147,10 +146,10 @@ export function handleNetworkError(error: any): void {
     const message = parseErrorMessage(error).toLowerCase();
     
     if (message.includes('timeout') || message.includes('timed out')) {
-        vscode.window.showErrorMessage('ネットワーク接続がタイムアウトしました。インターネット接続を確認してください。');
+        vscode.window.showErrorMessage('[work-env] ネットワーク接続がタイムアウトしました。インターネット接続を確認してください。');
     } else if (message.includes('network') || message.includes('connect')) {
-        vscode.window.showErrorMessage('ネットワーク接続エラーが発生しました。インターネット接続を確認してください。');
+        vscode.window.showErrorMessage('[work-env] ネットワーク接続エラーが発生しました。インターネット接続を確認してください。');
     } else {
-        vscode.window.showErrorMessage(`ネットワークエラーが発生しました: ${message}`);
+        vscode.window.showErrorMessage(`[work-env] ネットワークエラーが発生しました: ${message}`);
     }
 } 
