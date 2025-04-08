@@ -3,14 +3,14 @@ import * as sinon from 'sinon';
 import * as fs from 'fs';
 import * as path from 'path';
 import { 
-    vscode, childProcess, fsMock, resetMocks, 
-    setupMockFileSystem, mockDockerSuccess, mockDockerFailure,
-    createMockContext, expectation, mockRemoteContainersExtension, 
-    mockProjectFolderSelection, mockCacheFolderSelection, 
-    mockGitHubPatInput, resetAllMocks, waitForPromise, isDockerInstalled,
-    isRemoteContainersInstalled, generateDockerCompose
+    TEST_MODE, CURRENT_TEST_MODE, USE_MOCK, mockVscode, vscodeModule, vscode, fsMock, 
+    childProcess, resetMocks, resetAllMocks, mockDockerSuccess, mockDockerFailure,
+    setTestModeMock, setTestModeIntegration, waitForPromise, isDockerInstalled,
+    generateDockerCompose
 } from '../../src/test-helper';
-import { TEST_MODE, CURRENT_TEST_MODE } from '../setup';
+import { expectation, mockRemoteContainersExtension, 
+    mockProjectFolderSelection, mockCacheFolderSelection, 
+    mockGitHubPatInput } from '../../src/test-helper';
 
 // 型定義
 interface ExecResult {
@@ -164,43 +164,13 @@ describe('テストヘルパーの機能テスト', () => {
         }
     });
     
-    it('isDockerInstalled関数のテスト', async () => {
+    it('isDockerInstalledが正しく動作すること', async function() {
         // テスト環境ではtrueを返すことを確認
         process.env.NODE_ENV = 'test';
         const result = await isDockerInstalled();
         assert.strictEqual(result, true);
     });
 
-    it('isRemoteContainersInstalled関数のテスト', async function() {
-        // タイムアウト設定を追加
-        this.timeout(5000);
-        
-        // テスト開始時にモックをリセット
-        sinon.restore();
-        resetMocks();
-        
-        // 環境変数の設定を保存
-        const originalNodeEnv = process.env.NODE_ENV;
-        
-        try {
-            // テスト環境を設定
-            process.env.NODE_ENV = 'test';
-            
-            if (CURRENT_TEST_MODE === TEST_MODE.MOCK) {
-                // モックを設定
-                vscode.extensions.getExtension = sinon.stub();
-                vscode.extensions.getExtension.withArgs('ms-vscode-remote.remote-containers').returns({ id: 'ms-vscode-remote.remote-containers' });
-            }
-            
-            // テスト実行
-            const result = await isRemoteContainersInstalled();
-            assert.strictEqual(result, true);
-        } finally {
-            // 環境変数を元に戻す
-            process.env.NODE_ENV = originalNodeEnv;
-        }
-    });
-    
     it('expectation objectのテスト', () => {
         if (CURRENT_TEST_MODE === TEST_MODE.MOCK) {
             assert.ok(expectation.errorMessageShown, 'errorMessageShownが存在する');

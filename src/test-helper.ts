@@ -137,7 +137,6 @@ const execPromise = promisify(exec);
 
 // エラーハンドリングのテスト用に内部関数を公開
 export {
-    showRemoteContainersNotInstalledError,
     showDockerNotInstalledError,
     checkDockerPermissions,
     showDockerPermissionError,
@@ -226,30 +225,6 @@ export function resetAllMocks() {
 // 非同期処理のテスト用ユーティリティ
 export function waitForPromise(ms = 0) {
   return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-// Remote Containers拡張機能がインストールされているかを確認する関数
-export async function isRemoteContainersInstalled(): Promise<boolean> {
-  // テスト環境では常にtrueを返す
-  if (process.env.NODE_ENV === 'test') {
-    return true;
-  }
-  
-  // 実環境での実装
-  const extension = vscode.extensions.getExtension('ms-vscode-remote.remote-containers');
-  return !!extension;
-}
-
-// Remote Containers拡張機能がインストールされていない場合のエラーメッセージを表示
-function showRemoteContainersNotInstalledError() {
-    const message = 'Remote Containers拡張機能がインストールされていません。この拡張機能を使用する前にインストールしてください。';
-    const installButton = '拡張機能をインストール';
-    
-    vscodeModule.window.showErrorMessage(message, installButton).then((selection: string | undefined) => {
-        if (selection === installButton) {
-            vscodeModule.commands.executeCommand('workbench.extensions.search', 'ms-vscode-remote.remote-containers');
-        }
-    });
 }
 
 // Dockerがインストールされているかを確認する関数

@@ -4,6 +4,22 @@ All notable changes to the "work-env" extension will be documented in this file.
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.1.4] - 2025-04-10
+
+### Changed
+
+- **Remote Containersのインストール確認機能を削除**
+  - 依存関係を簡素化するためRemote Containers拡張機能の確認機能を削除
+  - 事前チェック（preflightChecks）をDockerインストール確認のみに変更
+  - 関連する設定項目とテストコードも削除
+
+### Improved
+
+- ドキュメントの更新
+  - 仕様書からRemote Containers関連の記述を削除
+  - READMEから依存関係の要件を更新
+  - 事前チェックフローの明確化
+
 ## [1.1.3] - 2025-04-08
 
 ### Added

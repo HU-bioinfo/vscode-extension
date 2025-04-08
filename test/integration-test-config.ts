@@ -56,4 +56,16 @@ export function shouldSkipTestInIntegrationMode(testTitle: string): boolean {
   return TESTS_TO_SKIP_IN_INTEGRATION_MODE.some(skipTitle => 
     testTitle.includes(skipTitle)
   );
-} 
+}
+
+// 統合テストモードでスキップするテスト名のリスト
+export const skipTests = [
+    // Remote Containers関連のテスト
+    'Remote Containers拡張機能のチェック',
+    'Remote Containers拡張機能エラーメッセージの表示',
+    'Remote Containers拡張機能のインストールガイドを開くテスト',
+    
+    // その他のスキップするテスト
+    'メインコマンド登録', // 統合テストではコマンド登録で問題が発生する場合がある
+    // ... 既存のスキップテスト
+]; 

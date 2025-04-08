@@ -82,36 +82,6 @@ describe('Extension Test Suite', () => {
 			'コマンドがsubscriptionsに追加されなかった');
 	});
 
-	it('Remote Containers拡張機能のチェック', async function() {
-		// 統合テストモードではスキップ
-		if (CURRENT_TEST_MODE === TEST_MODE.INTEGRATION) {
-			console.log('統合テストモードではRemote Containersチェックテストをスキップします');
-			this.skip();
-			return;
-		}
-		
-		// 各テストの開始時にモックをリセット
-		sinon.restore();
-		resetMocks();
-		
-		// 拡張機能がインストールされていない場合
-		vscode.extensions.getExtension.withArgs('ms-vscode-remote.remote-containers').returns(undefined);
-		const notInstalledResult = await extensionProxy.isRemoteContainersInstalled();
-		assert.strictEqual(notInstalledResult, false);
-		
-		// 拡張機能がインストールされている場合
-		vscode.extensions.getExtension.withArgs('ms-vscode-remote.remote-containers').returns({ id: 'ms-vscode-remote.remote-containers' });
-		const installedResult = await extensionProxy.isRemoteContainersInstalled();
-		assert.strictEqual(installedResult, true);
-	});
-
-	it('Remote Containers拡張機能エラーメッセージの表示', async () => {
-		extensionProxy.showRemoteContainersNotInstalledError();
-		
-		assert.ok(vscode.window.showErrorMessage.calledOnce);
-		assert.ok(vscode.window.showErrorMessage.firstCall.args[0].includes('Remote Containers拡張機能がインストールされていません'));
-	});
-
 	it('Dockerインストール確認', async () => {
 		// 各テストの開始時にモックをリセット
 		sinon.restore();
@@ -747,18 +717,6 @@ describe('Extension Test Suite', () => {
 		assert.ok(vscode.env.openExternal.called, 'ブラウザでURLが開かれるべき');
 	});
 
-	it('Remote Containers拡張機能のインストールガイドを開くテスト', async () => {
-		// インストールボタンのクリックをシミュレート
-		vscode.window.showErrorMessage.resolves('拡張機能をインストール');
-		
-		await extensionProxy.showRemoteContainersNotInstalledError();
-		
-		assert.ok(vscode.window.showErrorMessage.calledWith(
-			sinon.match('Remote Containers拡張機能がインストールされていません')
-		));
-		assert.ok(vscode.commands.executeCommand.calledWith('workbench.extensions.search', 'ms-vscode-remote.remote-containers'));
-	});
-
 	it('Docker Composeファイル生成のテスト', () => {
 		// モックの設定
 		fsMock.existsSync.returns(true);
@@ -948,11 +906,9 @@ describe('Extension Test Suite', () => {
 		const originalIsDockerInstalled = extensionProxy.isDockerInstalled;
 		const originalShowDockerInstallPrompt = extensionProxy.showDockerInstallPrompt;
 		const originalInstallDockerWithProgress = extensionProxy.installDockerWithProgress;
-		const originalIsRemoteContainersInstalled = extensionProxy.isRemoteContainersInstalled;
 		
 		try {
 			// 関数をスタブに置き換え
-			extensionProxy.isRemoteContainersInstalled = async () => true; // Remote Containers拡張機能はインストール済み
 			extensionProxy.isDockerInstalled = async () => false;
 			extensionProxy.showDockerInstallPrompt = async () => false; // キャンセルを選択
 			extensionProxy.installDockerWithProgress = sinon.stub().resolves(false);
@@ -960,11 +916,6 @@ describe('Extension Test Suite', () => {
 			// preflightChecks関数を再定義して、上記のスタブを使用するようにする
 			extensionProxy.preflightChecks = async function() {
 				// 実装をテスト用に再作成
-				if (!await extensionProxy.isRemoteContainersInstalled()) {
-					extensionProxy.showRemoteContainersNotInstalledError();
-					return false;
-				}
-				
 				if (!await extensionProxy.isDockerInstalled()) {
 					const installDocker = await extensionProxy.showDockerInstallPrompt();
 					if (installDocker) {
@@ -992,7 +943,6 @@ describe('Extension Test Suite', () => {
 			extensionProxy.isDockerInstalled = originalIsDockerInstalled;
 			extensionProxy.showDockerInstallPrompt = originalShowDockerInstallPrompt;
 			extensionProxy.installDockerWithProgress = originalInstallDockerWithProgress;
-			extensionProxy.isRemoteContainersInstalled = originalIsRemoteContainersInstalled;
 			extensionProxy.preflightChecks = originalPreflightChecks;
 		}
 	});
@@ -1007,11 +957,9 @@ describe('Extension Test Suite', () => {
 		const originalIsDockerInstalled = extensionProxy.isDockerInstalled;
 		const originalShowDockerInstallPrompt = extensionProxy.showDockerInstallPrompt;
 		const originalInstallDockerWithProgress = extensionProxy.installDockerWithProgress;
-		const originalIsRemoteContainersInstalled = extensionProxy.isRemoteContainersInstalled;
 		
 		try {
 			// 関数をスタブに置き換え
-			extensionProxy.isRemoteContainersInstalled = async () => true; // Remote Containers拡張機能はインストール済み
 			extensionProxy.isDockerInstalled = async () => false;
 			extensionProxy.showDockerInstallPrompt = async () => true; // インストールを選択
 			extensionProxy.installDockerWithProgress = sinon.stub().resolves(true); // インストール成功
@@ -1019,11 +967,6 @@ describe('Extension Test Suite', () => {
 			// preflightChecks関数を再定義して、上記のスタブを使用するようにする
 			extensionProxy.preflightChecks = async function() {
 				// 実装をテスト用に再作成
-				if (!await extensionProxy.isRemoteContainersInstalled()) {
-					extensionProxy.showRemoteContainersNotInstalledError();
-					return false;
-				}
-				
 				if (!await extensionProxy.isDockerInstalled()) {
 					const installDocker = await extensionProxy.showDockerInstallPrompt();
 					if (installDocker) {
@@ -1051,7 +994,6 @@ describe('Extension Test Suite', () => {
 			extensionProxy.isDockerInstalled = originalIsDockerInstalled;
 			extensionProxy.showDockerInstallPrompt = originalShowDockerInstallPrompt;
 			extensionProxy.installDockerWithProgress = originalInstallDockerWithProgress;
-			extensionProxy.isRemoteContainersInstalled = originalIsRemoteContainersInstalled;
 			extensionProxy.preflightChecks = originalPreflightChecks;
 		}
 	});
@@ -1066,11 +1008,9 @@ describe('Extension Test Suite', () => {
 		const originalIsDockerInstalled = extensionProxy.isDockerInstalled;
 		const originalShowDockerInstallPrompt = extensionProxy.showDockerInstallPrompt;
 		const originalInstallDockerWithProgress = extensionProxy.installDockerWithProgress;
-		const originalIsRemoteContainersInstalled = extensionProxy.isRemoteContainersInstalled;
 		
 		try {
 			// 関数をスタブに置き換え
-			extensionProxy.isRemoteContainersInstalled = async () => true; // Remote Containers拡張機能はインストール済み
 			extensionProxy.isDockerInstalled = async () => false;
 			extensionProxy.showDockerInstallPrompt = async () => true; // インストールを選択
 			extensionProxy.installDockerWithProgress = sinon.stub().resolves(false); // インストール失敗
@@ -1078,11 +1018,6 @@ describe('Extension Test Suite', () => {
 			// preflightChecks関数を再定義して、上記のスタブを使用するようにする
 			extensionProxy.preflightChecks = async function() {
 				// 実装をテスト用に再作成
-				if (!await extensionProxy.isRemoteContainersInstalled()) {
-					extensionProxy.showRemoteContainersNotInstalledError();
-					return false;
-				}
-				
 				if (!await extensionProxy.isDockerInstalled()) {
 					const installDocker = await extensionProxy.showDockerInstallPrompt();
 					if (installDocker) {
@@ -1110,7 +1045,6 @@ describe('Extension Test Suite', () => {
 			extensionProxy.isDockerInstalled = originalIsDockerInstalled;
 			extensionProxy.showDockerInstallPrompt = originalShowDockerInstallPrompt;
 			extensionProxy.installDockerWithProgress = originalInstallDockerWithProgress;
-			extensionProxy.isRemoteContainersInstalled = originalIsRemoteContainersInstalled;
 			extensionProxy.preflightChecks = originalPreflightChecks;
 		}
 	});
