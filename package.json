@@ -11,6 +11,18 @@
   "categories": [
     "Other"
   ],
+  "extensionDependencies": [
+    "ms-vscode-remote.remote-containers"
+  ],
+  "extensionPack": [],
+  "keywords": [
+    "docker",
+    "container",
+    "r",
+    "python",
+    "data-science",
+    "development-environment"
+  ],
   "activationEvents": [
     "onCommand:work-env.start-work-env",
     "onCommand:work-env.reset-config",
@@ -30,7 +42,7 @@
     ]
   },
   "scripts": {
-    "vscode:prepublish": "npm run compile",
+    "vscode:prepublish": "echo Skipping compile",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "pretest": "npm run compile && npm run lint",
