@@ -4,6 +4,21 @@ All notable changes to the "work-env" extension will be documented in this file.
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.1.5] - 2025-04-15
+
+### Changed
+
+- **環境変数ファイル(.env)の配置場所を変更**
+  - GitHub PATなどの環境変数を格納する.envファイルをcontainerディレクトリの外部（親ディレクトリ）に配置するように変更
+  - 複数のコンテナ環境で環境変数を共有しやすくなるよう改善
+  - docker-compose.ymlの設定を変更し、外部の.envファイルを参照するように修正
+
+### Improved
+
+- 環境変数管理の柔軟性向上
+  - 共通設定を複数環境で再利用可能に
+  - テンプレート処理機能の強化
+
 ## [1.1.4] - 2025-04-10
 
 ### Changed
