@@ -1,0 +1,20 @@
+# 自動ライブラリロード設定
+if (interactive()) {
+  # 必要なパッケージがインストールされていない場合はインストール
+  pkgs <- c("dplyr", "ggplot2", "tidyr", "readr")
+  for (pkg in pkgs) {
+    if (!requireNamespace(pkg, quietly = TRUE)) {
+      cat(sprintf("パッケージ %s をインストールしています...\n", pkg))
+      install.packages(pkg)
+    }
+  }
+  
+  # よく使うパッケージの読み込み
+  suppressPackageStartupMessages({
+    library(dplyr)
+    library(ggplot2)
+  })
+  
+  # プロジェクトディレクトリ表示
+  cat("現在のプロジェクトディレクトリ:", getwd(), "\n")
+} 

@@ -341,7 +341,6 @@ export async function setupDevContainer(context: vscode.ExtensionContext, target
         // コンテナテンプレートディレクトリのパスを取得
         const containerTemplateUri = getResourceUri(context, 'templates/container_template');
         const devcontainerTemplateUri = getResourceUri(context, 'templates/container_template/.devcontainer_template');
-        const envTemplateUri = getResourceUri(context, 'templates/.env.template');
         
         // 変数定義（必要に応じて）
         const variables: Record<string, string> = {
@@ -356,14 +355,6 @@ export async function setupDevContainer(context: vscode.ExtensionContext, target
             targetPath,
             variables
         );
-        
-        // 共通の.envファイルを処理
-        if (fs.existsSync(envTemplateUri.fsPath)) {
-            const envContent = fs.readFileSync(envTemplateUri.fsPath, 'utf8');
-            const processedEnvContent = templateProcessor.replaceVariables(envContent, variables);
-            const parentDirPath = path.dirname(path.dirname(targetPath));
-            fs.writeFileSync(path.join(parentDirPath, '.env'), processedEnvContent, 'utf8');
-        }
         
         vscode.window.showInformationMessage("[work-env] devcontainer設定を作成しました");
     } catch (error) {
@@ -427,8 +418,9 @@ export async function generateDockerCompose(context: vscode.ExtensionContext, do
             if (fs.existsSync(envTemplateUri.fsPath)) {
                 const envContent = fs.readFileSync(envTemplateUri.fsPath, 'utf8');
                 const processedEnvContent = templateProcessor.replaceVariables(envContent, variables);
-                const parentDirPath = path.dirname(path.dirname(dockercomposeFilePath));
-                fs.writeFileSync(path.join(parentDirPath, '.env'), processedEnvContent, 'utf8');
+                // 親ディレクトリ（containerディレクトリの親）に.envファイルを配置
+                const grandParentDirPath = path.dirname(path.dirname(path.dirname(dockercomposeFilePath)));
+                fs.writeFileSync(path.join(grandParentDirPath, '.env'), processedEnvContent, 'utf8');
             }
             
             vscode.window.showInformationMessage("[work-env] Docker Compose設定を生成しました");
