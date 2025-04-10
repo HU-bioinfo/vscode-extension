@@ -4,6 +4,13 @@ All notable changes to the "work-env" extension will be documented in this file.
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.1.6] - 2025-04-20
+
+### Changed
+
+- バージョンを1.1.6に更新
+- VSIXパッケージを再ビルド
+
 ## [1.1.5] - 2025-04-15
 
 ### Changed
