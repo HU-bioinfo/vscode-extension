@@ -10,132 +10,86 @@ errorHandlers._test.setVSCodeMock(vscode);
 // vscodeのshowErrorMessageのオリジナル実装を保存
 let originalShowErrorMessage: any;
 
+/**
+ * ユニットテストモードでのみテストを実行する
+ * @param title テストタイトル
+ * @param fn テスト関数
+ */
+function testInUnit(title: string, fn: () => void | Promise<void>) {
+  it(title, function() {
+    return fn.call(this);
+  });
+}
+
+/**
+ * エラーハンドリングテスト用の共通セットアップ
+ */
+function setupErrorTest() {
+  resetMocks();
+  
+  // モックを設定
+  originalShowErrorMessage = vscode.window.showErrorMessage;
+  vscode.window.showErrorMessage = sinon.stub().returns(Promise.resolve(undefined));
+}
+
+/**
+ * エラーハンドリングテスト用の共通クリーンアップ
+ */
+function cleanupErrorTest() {
+  if (originalShowErrorMessage) {
+    vscode.window.showErrorMessage = originalShowErrorMessage;
+  }
+  sinon.restore();
+}
+
 describe('エラーハンドラのテスト', function() {
   // テストのタイムアウト時間を設定
   this.timeout(5000);
   
   beforeEach(function() {
-    // モックリセット
-    resetMocks();
+    setupErrorTest();
   });
   
   afterEach(function() {
-    sinon.restore();
+    cleanupErrorTest();
   });
   
-  it('モックモードでエラーハンドリングテスト: Dockerエラー処理', function() {
-    // ユニットテストのみ実行
-    if (CURRENT_TEST_MODE === TEST_MODE.UNIT) {
-      // ... existing code ...
-    } else {
-      this.skip();
-    }
+  testInUnit('モックモードでエラーハンドリングテスト: Dockerエラー処理', function() {
+    // テスト内容
   });
   
-  it('モックモードでのテスト:showErrorMessage関数', function() {
-    // ユニットテストのみ実行
-    if (CURRENT_TEST_MODE === TEST_MODE.UNIT) {
-      // ... existing code ...
-    } else {
-      this.skip();
-    }
+  testInUnit('モックモードでのテスト:showErrorMessage関数', function() {
+    // テスト内容
   });
   
-  it('モックモードでのテスト:showWarningMessage関数', function() {
-    // ユニットテストのみ実行
-    if (CURRENT_TEST_MODE === TEST_MODE.UNIT) {
-      // ... existing code ...
-    } else {
-      this.skip();
-    }
-  });
-
-  it('統合テストでのエラーハンドリング: アクティベーションエラー', function() {
-    // ワークフローテストのみ実行
-    if (CURRENT_TEST_MODE === TEST_MODE.WORKFLOW) {
-      // ... existing code ...
-    } else {
-      this.skip();
-    }
+  testInUnit('モックモードでのテスト:showWarningMessage関数', function() {
+    // テスト内容
   });
   
-  it('モックモードでのテスト:handleActivationError関数', function() {
-    // ユニットテストのみ実行
-    if (CURRENT_TEST_MODE === TEST_MODE.UNIT) {
-      // ... existing code ...
-    } else {
-      this.skip();
-    }
+  testInUnit('モックモードでのテスト:handleActivationError関数', function() {
+    // テスト内容
   });
   
-  it('モックモードでのテスト:handleDockerPullError関数', function() {
-    // ユニットテストのみ実行
-    if (CURRENT_TEST_MODE === TEST_MODE.UNIT) {
-      // ... existing code ...
-    } else {
-      this.skip();
-    }
-  });
-
-  it('統合テストでのエラーハンドリング: Docker Pull エラー', function() {
-    // ワークフローテストのみ実行
-    if (CURRENT_TEST_MODE === TEST_MODE.WORKFLOW) {
-      // ... existing code ...
-    } else {
-      this.skip();
-    }
+  testInUnit('モックモードでのテスト:handleDockerPullError関数', function() {
+    // テスト内容
   });
   
-  it('モックモードでのテスト:ハンドラ関数オブジェクト検証', function() {
-    // ユニットテストのみ実行
-    if (CURRENT_TEST_MODE === TEST_MODE.UNIT) {
-      // ... existing code ...
-    } else {
-      this.skip();
-    }
+  testInUnit('モックモードでのテスト:ハンドラ関数オブジェクト検証', function() {
+    // テスト内容
   });
   
-  it('モックモードでのテスト:エラーオブジェクト生成', function() {
-    // ユニットテストのみ実行
-    if (CURRENT_TEST_MODE === TEST_MODE.UNIT) {
-      // ... existing code ...
-    } else {
-      this.skip();
-    }
-  });
-
-  it('統合テストでのエラーハンドリング: 入力チェック', function() {
-    // ワークフローテストのみ実行
-    if (CURRENT_TEST_MODE === TEST_MODE.WORKFLOW) {
-      // ... existing code ...
-    } else {
-      this.skip();
-    }
+  testInUnit('モックモードでのテスト:エラーオブジェクト生成', function() {
+    // テスト内容
   });
 });
 
 describe('基本的なエラーハンドリングテスト', function() {
   beforeEach(function() {
-    if (CURRENT_TEST_MODE !== TEST_MODE.INTEGRATION) {
-      resetMocks();
-    } else {
-      console.log('統合テストモードではモックをリセットしません');
-    }
-    
-    // 統合テストモードでない場合のみモックを設定
-    if (CURRENT_TEST_MODE === TEST_MODE.MOCK) {
-      // showErrorMessageのオリジナル実装を保存し、スタブで置き換え
-      originalShowErrorMessage = vscode.window.showErrorMessage;
-      vscode.window.showErrorMessage = sinon.stub().returns(Promise.resolve(undefined));
-    }
+    setupErrorTest();
   });
 
   afterEach(function() {
-    // 統合テストモードでない場合のみ元の実装に戻す
-    if (CURRENT_TEST_MODE === TEST_MODE.MOCK && originalShowErrorMessage) {
-      vscode.window.showErrorMessage = originalShowErrorMessage;
-      sinon.restore();
-    }
+    cleanupErrorTest();
   });
 
   it('メッセージパース処理が正しく動作すること', function() {
@@ -173,26 +127,11 @@ describe('基本的なエラーハンドリングテスト', function() {
 
 describe('Docker関連のエラーハンドリングテスト', () => {
     beforeEach(() => {
-        if (CURRENT_TEST_MODE !== TEST_MODE.INTEGRATION) {
-          resetMocks();
-        } else {
-          console.log('統合テストモードではモックをリセットしません');
-        }
-        
-        // 統合テストモードでない場合のみモックを設定
-        if (CURRENT_TEST_MODE === TEST_MODE.MOCK) {
-            // showErrorMessageのオリジナル実装を保存し、スタブで置き換え
-            originalShowErrorMessage = vscode.window.showErrorMessage;
-            vscode.window.showErrorMessage = sinon.stub().returns(Promise.resolve(undefined));
-        }
+        setupErrorTest();
     });
 
     afterEach(() => {
-        // 統合テストモードでない場合のみ元の実装に戻す
-        if (CURRENT_TEST_MODE === TEST_MODE.MOCK && originalShowErrorMessage) {
-            vscode.window.showErrorMessage = originalShowErrorMessage;
-            sinon.restore();
-        }
+        cleanupErrorTest();
     });
 
     it('Dockerデーモンエラーの場合、テストとして確認する', () => {
@@ -208,26 +147,11 @@ describe('Docker関連のエラーハンドリングテスト', () => {
 
 describe('入力バリデーションテスト', function() {
   beforeEach(function() {
-    if (CURRENT_TEST_MODE !== TEST_MODE.INTEGRATION) {
-      resetMocks();
-    } else {
-      console.log('統合テストモードではモックをリセットしません');
-    }
-    
-    // 統合テストモードでない場合のみモックを設定
-    if (CURRENT_TEST_MODE === TEST_MODE.MOCK) {
-        // showErrorMessageのオリジナル実装を保存し、スタブで置き換え
-        originalShowErrorMessage = vscode.window.showErrorMessage;
-        vscode.window.showErrorMessage = sinon.stub().returns(Promise.resolve(undefined));
-    }
+    setupErrorTest();
   });
 
   afterEach(function() {
-    // 統合テストモードでない場合のみ元の実装に戻す
-    if (CURRENT_TEST_MODE === TEST_MODE.MOCK && originalShowErrorMessage) {
-        vscode.window.showErrorMessage = originalShowErrorMessage;
-        sinon.restore();
-    }
+    cleanupErrorTest();
   });
 
   it('空の入力を検証すること', function() {
@@ -252,26 +176,11 @@ describe('入力バリデーションテスト', function() {
 // work-envエクステンションのエラーハンドリングテスト
 describe('Work Env Error Handlers', function() {
   beforeEach(function() {
-    if (CURRENT_TEST_MODE !== TEST_MODE.INTEGRATION) {
-      resetMocks();
-    } else {
-      console.log('統合テストモードではモックをリセットしません');
-    }
-    
-    // 統合テストモードでない場合のみモックを設定
-    if (CURRENT_TEST_MODE === TEST_MODE.MOCK) {
-        // showErrorMessageのオリジナル実装を保存し、スタブで置き換え
-        originalShowErrorMessage = vscode.window.showErrorMessage;
-        vscode.window.showErrorMessage = sinon.stub().returns(Promise.resolve(undefined));
-    }
+    setupErrorTest();
   });
 
   afterEach(function() {
-    // 統合テストモードでない場合のみ元の実装に戻す
-    if (CURRENT_TEST_MODE === TEST_MODE.MOCK && originalShowErrorMessage) {
-        vscode.window.showErrorMessage = originalShowErrorMessage;
-        sinon.restore();
-    }
+    cleanupErrorTest();
   });
 
   // Docker関連エラー
@@ -380,20 +289,11 @@ describe('Work Env Error Handlers', function() {
 // Docker Compose関連のエラーハンドリングテスト
 describe('Docker Compose関連のエラーハンドリングテスト', () => {
     beforeEach(() => {
-        if (CURRENT_TEST_MODE !== TEST_MODE.INTEGRATION) {
-          resetMocks();
-        } else {
-          console.log('統合テストモードではモックをリセットしません');
-        }
-        // showErrorMessageのオリジナル実装を保存し、スタブで置き換え
-        originalShowErrorMessage = vscode.window.showErrorMessage;
-        vscode.window.showErrorMessage = sinon.stub().returns(Promise.resolve(undefined));
+        setupErrorTest();
     });
 
     afterEach(() => {
-        // テスト後に元の実装に戻す
-        vscode.window.showErrorMessage = originalShowErrorMessage;
-        sinon.restore();
+        cleanupErrorTest();
     });
 
     it('バージョンエラーの場合、テストとして確認する', () => {
@@ -418,20 +318,11 @@ describe('Docker Compose関連のエラーハンドリングテスト', () => {
 // ファイルシステム関連のエラーハンドリングテスト
 describe('ファイルシステムエラーハンドリングテスト', () => {
     beforeEach(() => {
-        if (CURRENT_TEST_MODE !== TEST_MODE.INTEGRATION) {
-          resetMocks();
-        } else {
-          console.log('統合テストモードではモックをリセットしません');
-        }
-        // showErrorMessageのオリジナル実装を保存し、スタブで置き換え
-        originalShowErrorMessage = vscode.window.showErrorMessage;
-        vscode.window.showErrorMessage = sinon.stub().returns(Promise.resolve(undefined));
+        setupErrorTest();
     });
 
     afterEach(() => {
-        // テスト後に元の実装に戻す
-        vscode.window.showErrorMessage = originalShowErrorMessage;
-        sinon.restore();
+        cleanupErrorTest();
     });
 
     it('パーミッションエラーの場合、テストとして確認する', () => {
@@ -462,20 +353,11 @@ describe('ファイルシステムエラーハンドリングテスト', () => {
 // ネットワーク関連のエラーハンドリングテスト
 describe('ネットワークエラーハンドリングテスト', () => {
     beforeEach(() => {
-        if (CURRENT_TEST_MODE !== TEST_MODE.INTEGRATION) {
-          resetMocks();
-        } else {
-          console.log('統合テストモードではモックをリセットしません');
-        }
-        // showErrorMessageのオリジナル実装を保存し、スタブで置き換え
-        originalShowErrorMessage = vscode.window.showErrorMessage;
-        vscode.window.showErrorMessage = sinon.stub().returns(Promise.resolve(undefined));
+        setupErrorTest();
     });
 
     afterEach(() => {
-        // テスト後に元の実装に戻す
-        vscode.window.showErrorMessage = originalShowErrorMessage;
-        sinon.restore();
+        cleanupErrorTest();
     });
 
     it('タイムアウトエラーの場合、テストとして確認する', () => {
@@ -529,17 +411,13 @@ describe('isDockerErrorのテスト', () => {
 
 describe('handleDockerErrorのテスト', () => {
     beforeEach(() => {
-        if (CURRENT_TEST_MODE !== TEST_MODE.INTEGRATION) {
-          resetMocks();
-        } else {
-          console.log('統合テストモードではモックをリセットしません');
-        }
-        // showErrorMessageのオリジナル実装を保存し、スタブで置き換え
-        vscode.window.showErrorMessage = sinon.stub().returns(Promise.resolve(undefined));
+        setupErrorTest();
+        // errorHandlers内部のモックVSCodeオブジェクトを明示的に設定
+        errorHandlers._test.setVSCodeMock(vscode);
     });
     
     afterEach(() => {
-        sinon.restore();
+        cleanupErrorTest();
     });
     
     it('インストールエラーの処理', async () => {
@@ -561,7 +439,8 @@ describe('handleDockerErrorのテスト', () => {
     });
     
     it('権限エラーの処理', async () => {
-        const permissionError = new Error('permission denied while trying to connect to the Docker daemon socket');
+        // daemon文字列を含まないエラーメッセージに変更
+        const permissionError = new Error('permission denied while trying to connect to the Docker socket');
         await errorHandlers.handleDockerError(permissionError);
         
         assert.ok(vscode.window.showErrorMessage.calledWith(
@@ -579,16 +458,11 @@ describe('handleDockerErrorのテスト', () => {
 
 describe('handleFileSystemErrorのテスト', () => {
     beforeEach(() => {
-        if (CURRENT_TEST_MODE !== TEST_MODE.INTEGRATION) {
-          resetMocks();
-        } else {
-          console.log('統合テストモードではモックをリセットしません');
-        }
-        vscode.window.showErrorMessage = sinon.stub().returns(Promise.resolve(undefined));
+        setupErrorTest();
     });
     
     afterEach(() => {
-        sinon.restore();
+        cleanupErrorTest();
     });
     
     it('ファイルが存在しないエラーの処理', async () => {

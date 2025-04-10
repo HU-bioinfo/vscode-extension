@@ -37,7 +37,6 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.expectation = exports.fsMock = exports.childProcess = exports.mockVscode = exports.vscode = void 0;
-exports.showRemoteContainersNotInstalledError = showRemoteContainersNotInstalledError;
 exports.showDockerNotInstalledError = showDockerNotInstalledError;
 exports.checkDockerPermissions = checkDockerPermissions;
 exports.showDockerPermissionError = showDockerPermissionError;
@@ -45,7 +44,6 @@ exports.setupDevContainer = setupDevContainer;
 exports.openFolderInContainer = openFolderInContainer;
 exports.resetAllMocks = resetAllMocks;
 exports.waitForPromise = waitForPromise;
-exports.isRemoteContainersInstalled = isRemoteContainersInstalled;
 exports.isDockerInstalled = isDockerInstalled;
 exports.generateDockerCompose = generateDockerCompose;
 exports.createMockVscodeModule = createMockVscodeModule;
@@ -229,26 +227,6 @@ function resetAllMocks() {
 // 非同期処理のテスト用ユーティリティ
 function waitForPromise(ms = 0) {
     return new Promise(resolve => setTimeout(resolve, ms));
-}
-// Remote Containers拡張機能がインストールされているかを確認する関数
-async function isRemoteContainersInstalled() {
-    // テスト環境では常にtrueを返す
-    if (process.env.NODE_ENV === 'test') {
-        return true;
-    }
-    // 実環境での実装
-    const extension = exports.vscode.extensions.getExtension('ms-vscode-remote.remote-containers');
-    return !!extension;
-}
-// Remote Containers拡張機能がインストールされていない場合のエラーメッセージを表示
-function showRemoteContainersNotInstalledError() {
-    const message = 'Remote Containers拡張機能がインストールされていません。この拡張機能を使用する前にインストールしてください。';
-    const installButton = '拡張機能をインストール';
-    vscodeModule.window.showErrorMessage(message, installButton).then((selection) => {
-        if (selection === installButton) {
-            vscodeModule.commands.executeCommand('workbench.extensions.search', 'ms-vscode-remote.remote-containers');
-        }
-    });
 }
 // Dockerがインストールされているかを確認する関数
 async function isDockerInstalled() {

@@ -38,8 +38,6 @@ exports.activate = activate;
 exports.preflightChecks = preflightChecks;
 exports.pullDockerImage = pullDockerImage;
 exports.removeExistingContainers = removeExistingContainers;
-exports.isRemoteContainersInstalled = isRemoteContainersInstalled;
-exports.showRemoteContainersNotInstalledError = showRemoteContainersNotInstalledError;
 exports.isDockerInstalled = isDockerInstalled;
 exports.showDockerNotInstalledError = showDockerNotInstalledError;
 exports.checkDockerPermissions = checkDockerPermissions;
@@ -72,12 +70,7 @@ const execPromise = (0, util_1.promisify)(child_process_1.exec);
 // 設定関連の定数
 exports.CONFIG = {
     DOCKER_IMAGE: 'kokeh/hu_bioinfo:stable',
-    CONTAINER_NAME_FILTERS: ['hu-bioinfo-workshop', 'work-env'],
-    // Remote Containers拡張のIDは複数の可能性があるため配列で定義
-    REMOTE_CONTAINERS_IDS: [
-        'ms-vscode-remote.remote-containers',
-        'ms-vscode-remote.remote-containers-nightly'
-    ]
+    CONTAINER_NAME_FILTERS: ['hu-bioinfo-workshop', 'work-env']
 };
 /**
  * エクステンションアクティベーション時の処理
@@ -159,15 +152,10 @@ function activate(context) {
     context.subscriptions.push(resetConfigCommand);
 }
 /**
- * 事前チェック（Remote Container拡張、Docker、権限）
+ * 事前チェック（Docker、権限）
  * @returns 全てのチェックが通った場合はtrue
  */
 async function preflightChecks() {
-    // Remote Containers拡張機能がインストールされているか確認
-    if (!await isRemoteContainersInstalled()) {
-        showRemoteContainersNotInstalledError();
-        return false;
-    }
     // Dockerがインストールされているか確認
     if (!await isDockerInstalled()) {
         // Docker未インストールの場合、インストールを提案
@@ -217,35 +205,6 @@ async function removeExistingContainers(nameFilters) {
         // コンテナが存在しない場合はエラーが出るが無視して続行
         return true;
     }
-}
-// Remote Containers拡張機能がインストールされているかを確認する関数
-async function isRemoteContainersInstalled() {
-    try {
-        // コマンドラインでチェック
-        try {
-            // remote-containersを含む拡張機能をチェック
-            const { stdout } = await execPromise('code --list-extensions | grep -i "remote-containers"');
-            return stdout.trim().length > 0;
-        }
-        catch (cmdError) {
-            // コマンド実行エラーの場合は失敗とみなす（grepでマッチしない場合もエラーになるため）
-            return false;
-        }
-    }
-    catch (error) {
-        vscode.window.showWarningMessage(`[work-env] Remote Containers拡張機能の確認中にエラーが発生しました: ${(0, error_handlers_1.parseErrorMessage)(error)}`);
-        return false;
-    }
-}
-// Remote Containers拡張機能がインストールされていない場合のエラーメッセージを表示
-function showRemoteContainersNotInstalledError() {
-    const message = '[work-env] Remote Containers拡張機能がインストールされていません。この拡張機能を使用する前にインストールしてください。';
-    const installButton = '拡張機能をインストール';
-    vscode.window.showErrorMessage(message, installButton).then(selection => {
-        if (selection === installButton) {
-            vscode.commands.executeCommand('workbench.extensions.search', 'ms-vscode-remote.remote-containers');
-        }
-    });
 }
 // Dockerがインストールされているかを確認する関数
 async function isDockerInstalled() {
@@ -661,7 +620,21 @@ exports.forTesting = {
     validateSettings,
     collectDockerComposeConfig,
     isDockerInstalled,
-    isRemoteContainersInstalled,
+    preflightChecks
+};
+// commonjs用にエクスポート
+module.exports = {
+    activate,
+    deactivate,
+    CONFIG: exports.CONFIG,
+    resetWorkEnvConfig,
+    pullDockerImage,
+    openFolderInContainer,
+    generateDockerComposeFiles,
+    copyFolderRecursiveSync,
+    getResourceUri,
+    collectDockerComposeConfig,
+    isDockerInstalled,
     preflightChecks
 };
 //# sourceMappingURL=extension.js.map

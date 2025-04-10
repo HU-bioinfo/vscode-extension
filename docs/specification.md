@@ -68,11 +68,12 @@ work-env/
 1. **work-env.start-work-env**: 開発環境を起動するコマンド
 
    - 初回実行時は設定ウィザードを表示
+   - 親ディレクトリをユーザーが選択
    - Docker の存在をチェック
    - Docker がインストールされていない場合、自動インストールを提案
    - 必要な Docker イメージをプル
    - リソースフォルダからテンプレートを取得し、環境設定に基づいて Docker Compose/.devcontainer ファイルを生成
-   - コンテナ内でフォルダを開く
+   - devcontainerの「Open Folder in Container」で親ディレクトリに展開されたcontainerディレクトリをdevcontainerとして開く
 
 2. **work-env.reset-config**: 設定をリセットするコマンド
    - 既存のコンテナを削除

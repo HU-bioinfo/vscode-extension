@@ -23,16 +23,16 @@
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">88.52% </span>
+                <span class="strong">87.3% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>54/61</span>
+                <span class='fraction'>55/63</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">90.38% </span>
+                <span class="strong">90.16% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>47/52</span>
+                <span class='fraction'>55/61</span>
             </div>
         
             
@@ -44,9 +44,9 @@
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">88.52% </span>
+                <span class="strong">87.3% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>54/61</span>
+                <span class='fraction'>55/63</span>
             </div>
         
             
@@ -214,7 +214,10 @@
 <a name='L149'></a><a href='#L149'>149</a>
 <a name='L150'></a><a href='#L150'>150</a>
 <a name='L151'></a><a href='#L151'>151</a>
-<a name='L152'></a><a href='#L152'>152</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L152'></a><a href='#L152'>152</a>
+<a name='L153'></a><a href='#L153'>153</a>
+<a name='L154'></a><a href='#L154'>154</a>
+<a name='L155'></a><a href='#L155'>155</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-no">&nbsp;</span>
@@ -231,8 +234,8 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">5x</span>
+<span class="cline-any cline-yes">5x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -293,12 +296,15 @@
 <span class="cline-any cline-yes">4x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">4x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">3x</span>
 <span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">2x</span>
 <span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -437,21 +443,24 @@ export function isDockerError(error: any): boolean {
 }
 &nbsp;
 /**
- * Docker関連のエラーを処理する
+ * Dockerエラーを処理する
  * @param error Dockerエラー
  */
 export function handleDockerError(error: any): void {
     const message = parseErrorMessage(error).toLowerCase();
     
-    if (message.includes('cannot connect to the docker daemon') || 
-        message.includes('daemon is not running')) {
-        vscode.window.showErrorMessage('Dockerデーモンに接続できません。Dockerが起動しているか確認してください。');
-    } else if (message.includes('permission denied')) {
-        vscode.window.showErrorMessage('Dockerの実行権限がありません。管理者権限で実行するか、ユーザーをdockerグループに追加してください。');
-    } else if (message.includes('not found')) {
-        vscode.window.showErrorMessage('Dockerイメージまたはコンテナが見つかりません。イメージ名やタグを確認してください。');
+    if (message.includes('not installed') || message.includes('command not found')) {
+        vscode.window.showErrorMessage('[work-env] Dockerがインストールされていません。Dockerをインストールしてください。');
+    }
+    else if (message.includes('daemon') || message.includes('service')) {
+        vscode.window.showErrorMessage('[work-env] Dockerデーモンが実行されていません。Dockerデーモンを起動してください。');
+    }
+    else if (message.includes('permission') || message.includes('denied') || message.includes('access')) {
+        vscode.window.showErrorMessage('[work-env] Dockerを実行する権限がありません。ユーザーをDockerグループに追加するか、管理者権限で実行してください。');
+    } else <span class="missing-if-branch" title="if path not taken" >I</span>if (message.includes('no such') || message.includes('not found')) {
+<span class="cstat-no" title="statement not covered" >        vscode.window.showErrorMessage('[work-env] Dockerイメージまたはコンテナが見つかりません。イメージ名やタグを確認してください。');</span>
     } else {
-        vscode.window.showErrorMessage(`Dockerコマンドの実行中にエラーが発生しました: ${message}`);
+        vscode.window.showErrorMessage(`[work-env] Dockerコマンドの実行中にエラーが発生しました: ${message}`);
     }
 }
 &nbsp;
@@ -476,11 +485,11 @@ export function handleDockerComposeError(error: any): void {
     const message = parseErrorMessage(error).toLowerCase();
     
     if (message.includes('version not found')) {
-        vscode.window.showErrorMessage('Docker Composeのバージョンが古いか、互換性がありません。Docker Composeを更新してください。');
+        vscode.window.showErrorMessage('[work-env] Docker Composeのバージョンが古いか、互換性がありません。Docker Composeを更新してください。');
     } else if (message.includes('file not found')) {
-        vscode.window.showErrorMessage('docker-compose.ymlファイルが見つかりません。設定を確認してください。');
+        vscode.window.showErrorMessage('[work-env] docker-compose.ymlファイルが見つかりません。設定を確認してください。');
     } else {
-        vscode.window.showErrorMessage(`Docker Composeコマンドの実行中にエラーが発生しました: ${message}`);
+        vscode.window.showErrorMessage(`[work-env] Docker Composeコマンドの実行中にエラーが発生しました: ${message}`);
     }
 }
 &nbsp;
@@ -492,13 +501,13 @@ export function handleFileSystemError(error: any): void {
     const message = parseErrorMessage(error).toLowerCase();
     
     if (message.includes('permission denied')) {
-        vscode.window.showErrorMessage('ファイルへのアクセス権限がありません。管理者権限で実行するか、ファイルのアクセス権を確認してください。');
+        vscode.window.showErrorMessage('[work-env] ファイルへのアクセス権限がありません。管理者権限で実行するか、ファイルのアクセス権を確認してください。');
     } else if (message.includes('no such file') || message.includes('not found')) {
-        vscode.window.showErrorMessage('ファイルまたはディレクトリが見つかりません。パスを確認してください。');
+        vscode.window.showErrorMessage('[work-env] ファイルまたはディレクトリが見つかりません。パスを確認してください。');
     } else if (message.includes('already exists')) {
-        vscode.window.showErrorMessage('ファイルまたはディレクトリがすでに存在します。');
+        vscode.window.showErrorMessage('[work-env] ファイルまたはディレクトリがすでに存在します。');
     } else {
-        vscode.window.showErrorMessage(`ファイル操作中にエラーが発生しました: ${message}`);
+        vscode.window.showErrorMessage(`[work-env] ファイル操作中にエラーが発生しました: ${message}`);
     }
 }
 &nbsp;
@@ -510,11 +519,11 @@ export function handleNetworkError(error: any): void {
     const message = parseErrorMessage(error).toLowerCase();
     
     if (message.includes('timeout') || message.includes('timed out')) {
-        vscode.window.showErrorMessage('ネットワーク接続がタイムアウトしました。インターネット接続を確認してください。');
+        vscode.window.showErrorMessage('[work-env] ネットワーク接続がタイムアウトしました。インターネット接続を確認してください。');
     } else <span class="missing-if-branch" title="else path not taken" >E</span>if (message.includes('network') || <span class="branch-1 cbranch-no" title="branch not covered" >message.includes('connect'))</span> {
-        vscode.window.showErrorMessage('ネットワーク接続エラーが発生しました。インターネット接続を確認してください。');
+        vscode.window.showErrorMessage('[work-env] ネットワーク接続エラーが発生しました。インターネット接続を確認してください。');
     } else {
-<span class="cstat-no" title="statement not covered" >        vscode.window.showErrorMessage(`ネットワークエラーが発生しました: ${message}`);</span>
+<span class="cstat-no" title="statement not covered" >        vscode.window.showErrorMessage(`[work-env] ネットワークエラーが発生しました: ${message}`);</span>
     }
 } </pre></td></tr></table></pre>
 
@@ -523,7 +532,7 @@ export function handleNetworkError(error: any): void {
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2025-04-05T00:35:23.378Z
+                at 2025-04-09T03:46:25.094Z
             </div>
         <script src="prettify.js"></script>
         <script>

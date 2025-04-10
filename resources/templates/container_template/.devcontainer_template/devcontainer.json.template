@@ -21,6 +21,5 @@
             }
         }
     },
-    "workspaceFolder": "/home/user/proj",
-    "postAttachCommand": "cd /home/user/proj"
+    "workspaceFolder": "/home/user/proj"
 } 

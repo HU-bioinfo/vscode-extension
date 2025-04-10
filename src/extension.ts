@@ -367,14 +367,11 @@ export async function setupDevContainer(context: vscode.ExtensionContext, target
 // コンテナでフォルダを開く関数
 export async function openFolderInContainer(folderPath: string) {
     try {
-        // まず通常のフォルダとして開く
-        await vscode.commands.executeCommand("vscode.openFolder", vscode.Uri.file(folderPath));
-        
-        // 少し待機してから(フォルダが開かれるのを待つ)
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        
-        // devcontainerで再度開く
-        await vscode.commands.executeCommand("remote-containers.reopen");
+        // 直接devcontainerでフォルダを開く
+        await vscode.commands.executeCommand(
+            "remote-containers.openFolder", 
+            vscode.Uri.file(folderPath)
+        );
         
         vscode.window.showInformationMessage("[work-env] コンテナで開発環境を起動しました");
     } catch (error) {
