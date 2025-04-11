@@ -1,40 +1,5 @@
-gwd
-/container/singularity/sif/*
-/vscode-extension/work-env/.vscode/*
-/vscode-extension/work-env/out/*
-/vscode-extension/work-env/node_modules/*
-/wd
-.vscode-test/vscode-linux-x64-*/code
-
-
-*.sif
-*.env
-*.vsix
-
-# テストカバレッジ
-.nyc_output
+node_modules/
+.nyc_output/
 coverage/
-
-# VSCode テストファイル
-.vscode-test/user-data/Cache/
-.vscode-test/user-data/CachedData/
-.vscode-test/user-data/logs/
-.vscode-test/user-data/GPUCache/
-.vscode-test/user-data/Code Cache/
-.vscode-test/user-data/CachedProfilesData/
-.vscode-test/user-data/Crashpad/
-.vscode-test/user-data/DawnGraphiteCache/
-.vscode-test/user-data/DawnWebGPUCache/
-.vscode-test/user-data/Local Storage/
-.vscode-test/user-data/Session Storage/
-.vscode-test/user-data/Shared Dictionary/
-.vscode-test/user-data/TransportSecurity
-.vscode-test/user-data/User/
-.vscode-test/user-data/machineid
-
-# ビルドファイル
 out/
-temp/
-
-# テスト一時ファイル
-test-resources/
+vsix-extract/
