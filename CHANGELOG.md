@@ -293,3 +293,11 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
   - キャッシュフォルダ選択チェック
   - GitHub PAT 入力チェック
   - エラーメッセージの多言語対応（OS 別）
+
+## [1.1.7] - 2025-04-22
+
+### Changed
+
+- `resources/templates/container_template/sample_project/`ディレクトリを削除
+- プロジェクト構造の整理と最適化
+- 仕様書（specification.md）を更新して最新の構造を反映

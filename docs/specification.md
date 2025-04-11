@@ -39,17 +39,6 @@ work-env/
 │   │   │   └── docker-compose.yml.template # Docker Compose設定テンプレート
 │   │   ├── cache_template/     # キャッシュディレクトリのテンプレート
 │   │   ├── projects_template/  # プロジェクトディレクトリのテンプレート
-│   │   │   └── sample_project_template/    # サンプルRプロジェクトのテンプレート
-│   │   │       ├── R_template/             # R関数ディレクトリテンプレート
-│   │   │       ├── data_template/          # データディレクトリテンプレート
-│   │   │       ├── docs_template/          # ドキュメントディレクトリテンプレート
-│   │   │       ├── results_template/       # 結果ディレクトリテンプレート
-│   │   │       ├── scripts_template/       # スクリプトディレクトリテンプレート
-│   │   │       ├── tests_template/         # テストディレクトリテンプレート
-│   │   │       ├── .Rprofile.template      # R設定ファイルテンプレート
-│   │   │       ├── .gitignore.template     # Git除外設定テンプレート
-│   │   │       ├── README.md.template      # プロジェクト説明テンプレート
-│   │   │       └── renv.lock.template      # renv依存関係ファイルテンプレート
 │   │   └── ... その他テンプレートファイル
 │   └── ... その他リソース
 ├── test/                 # テストコード
