@@ -4,6 +4,13 @@ All notable changes to the "work-env" extension will be documented in this file.
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.1.8] - 2025-04-25
+
+### Improved
+
+- READMEの内容を改善し、ユーザーガイドを更新
+- ドキュメントの明確化と使いやすさの向上
+
 ## [1.1.7] - 2025-04-22
 
 ### Changed
