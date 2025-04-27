@@ -3,3 +3,11 @@ node_modules/
 coverage/
 out/
 vsix-extract/
+*.vsix
+.DS_Store
+*.log
+.vscode-test/
+dist/
+tmp/
+.history/
+.temp/
