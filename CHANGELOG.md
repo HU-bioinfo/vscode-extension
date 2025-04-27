@@ -4,6 +4,13 @@ All notable changes to the "work-env" extension will be documented in this file.
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.1.9] - 2024-07-30
+
+### Added
+- キャッシュ機能用のテンプレートファイルを追加 (`resources/templates/cache_template/`)
+- コンテナプロジェクト用のテンプレートファイルを追加 (`resources/templates/container_template/projects_template/`)
+- キャッシュおよびコンテナ機能に関連するユニットテストを追加
+
 ## [1.1.8] - 2025-04-25
 
 ### Improved
