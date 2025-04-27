@@ -228,7 +228,7 @@ async function installDockerOnLinux(
             progress.report({ increment: 80, message: 'ユーザー権限を設定中...' });
             await execPromise(`sudo usermod -aG docker ${os.userInfo().username}`);
             
-        } else if (osInfo.distro.id === 'centos' || osInfo.distro.id === 'rhel' || osInfo.distro.id === 'fedora') {
+        } else if (osInfo.distro.id === 'centos' || osInfo.distro.id === 'rhel') {
             // CentOS/RHELの場合
             await execPromise('sudo yum install -y yum-utils');
             await execPromise('sudo yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo');

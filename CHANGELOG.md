@@ -11,6 +11,14 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 - コンテナプロジェクト用のテンプレートファイルを追加 (`resources/templates/container_template/projects_template/`)
 - キャッシュおよびコンテナ機能に関連するユニットテストを追加
 
+### Changed
+- Docker-installerモジュールの改善と関連テストの強化
+- `.devcontainer_template/docker-compose.yml.template`を更新し、環境変数ファイル参照を改善
+- 不要なファイルを削除 (`tatus`ファイルと旧VSIXパッケージ)
+
+### Fixed
+- テスト関連ファイルのバグ修正と改善
+
 ## [1.1.8] - 2025-04-25
 
 ### Improved

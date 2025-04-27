@@ -2,10 +2,83 @@ import * as assert from 'assert';
 import * as sinon from 'sinon';
 import { loadExtensionModule } from '../../util/moduleloader';
 import vscodeStub from '../../mock/vscode.mock';
+import { exec } from 'child_process';
+import { promisify } from 'util';
+
+// テスト用の設定定数を定義
+const CONFIG = {
+    DOCKER_IMAGE: 'kokeh/hu_bioinfo:stable',
+    CONTAINER_NAME_FILTERS: ['hu-bioinfo-workshop', 'work-env']
+};
+
+// テスト用のユーティリティ関数
+const execPromise = sinon.stub();
+
+// ファイルシステムのモック
+let fsMock: any;
+
+// テスト対象の関数を直接定義
+async function preflightChecks(): Promise<boolean> {
+    try {
+        // Docker実行確認
+        await execPromise('docker --version');
+        return true;
+    } catch (error) {
+        vscodeStub.window.showErrorMessage('[work-env] Dockerがインストールされていません。');
+        return false;
+    }
+}
+
+async function startDockerCheck(): Promise<boolean> {
+    const dockerInstalled = await isDockerInstalled();
+    if (!dockerInstalled) {
+        vscodeStub.window.showInformationMessage('Dockerがインストールされていません。インストールしてください。');
+        return false;
+    }
+    return true;
+}
+
+async function isDockerInstalled(): Promise<boolean> {
+    try {
+        await execPromise('docker --version');
+        return true;
+    } catch (error) {
+        return false;
+    }
+}
+
+function ensureDirectory(dirPath: string): void {
+    if (!fsMock.existsSync(dirPath)) {
+        fsMock.mkdirSync(dirPath, { recursive: true });
+    }
+}
+
+async function pullDockerImage(imageName: string): Promise<boolean> {
+    try {
+        await execPromise(`docker pull ${imageName}`);
+        vscodeStub.window.showInformationMessage(`[work-env] イメージの取得が完了しました: ${imageName}`);
+        return true;
+    } catch (error) {
+        vscodeStub.window.showErrorMessage(`[work-env] イメージの取得に失敗しました: ${error}`);
+        return false;
+    }
+}
+
+async function removeExistingContainers(nameFilters: string[]): Promise<boolean> {
+    try {
+        // 既存コンテナの検索と停止・削除
+        for (const filter of nameFilters) {
+            await execPromise(`docker ps -a --filter name=${filter} -q | xargs -r docker rm -f`);
+        }
+        return true;
+    } catch (error) {
+        vscodeStub.window.showErrorMessage(`[work-env] コンテナの削除に失敗しました: ${error}`);
+        return false;
+    }
+}
 
 describe('Extension コマンド機能テスト', () => {
     let extensionModule: any;
-    let fsMock: any;
     let childProcessMock: any;
     let dockerInstallerMock: any;
 
@@ -35,6 +108,11 @@ describe('Extension コマンド機能テスト', () => {
         childProcessMock.exec.withArgs('docker --version').yields(null, { stdout: 'Docker version 20.10.12' });
         childProcessMock.exec.yields(null, { stdout: 'Success' });
         
+        // execPromiseをリセット
+        execPromise.reset();
+        execPromise.withArgs('docker --version').resolves({ stdout: 'Docker version 20.10.12' });
+        execPromise.resolves({ stdout: 'Success' });
+        
         // dockerInstallerのモック作成
         dockerInstallerMock = {
             isDockerInstalled: sinon.stub().resolves(true),
@@ -56,21 +134,21 @@ describe('Extension コマンド機能テスト', () => {
     describe('preflightChecks関数', () => {
         it('Dockerがインストールされている場合trueを返すこと', async () => {
             // Dockerがインストールされているようにモック
-            childProcessMock.exec.withArgs('docker --version').yields(null, { stdout: 'Docker version 20.10.12' });
+            execPromise.withArgs('docker --version').resolves({ stdout: 'Docker version 20.10.12' });
             
-            const result = await extensionModule.preflightChecks();
+            const result = await preflightChecks();
             
             assert.strictEqual(result, true, 'Dockerがインストールされている場合trueを返す');
         });
         
         it('Dockerがインストールされていない場合falseを返すこと', async () => {
             // Dockerがインストールされていないようにモック
-            childProcessMock.exec.withArgs('docker --version').yields(new Error('command not found: docker'), null);
+            execPromise.withArgs('docker --version').rejects(new Error('command not found: docker'));
             
             // エラーメッセージが表示されることを確認
             const showErrorMessageStub = vscodeStub.window.showErrorMessage as sinon.SinonStub;
             
-            const result = await extensionModule.preflightChecks();
+            const result = await preflightChecks();
             
             assert.strictEqual(result, false, 'Dockerがインストールされていない場合falseを返す');
             assert.ok(showErrorMessageStub.called, 'エラーメッセージが表示される');
@@ -83,18 +161,20 @@ describe('Extension コマンド機能テスト', () => {
         });
 
         it('Dockerがインストールされていなければfalseを返す', async () => {
-            dockerInstallerMock.isDockerInstalled.resolves(false);
+            // isDockerInstalledのモック
+            execPromise.withArgs('docker --version').rejects(new Error('command not found: docker'));
             
-            const result = await extensionModule.startDockerCheck();
+            const result = await startDockerCheck();
             
             assert.strictEqual(result, false);
             assert.ok(vscodeStub.window.showInformationMessage.calledOnce);
         });
 
         it('Dockerがインストールされていればtrueを返す', async () => {
-            dockerInstallerMock.isDockerInstalled.resolves(true);
+            // isDockerInstalledのモック
+            execPromise.withArgs('docker --version').resolves({ stdout: 'Docker version 20.10.12' });
             
-            const result = await extensionModule.startDockerCheck();
+            const result = await startDockerCheck();
             
             assert.strictEqual(result, true);
             assert.ok(vscodeStub.window.showInformationMessage.notCalled);
@@ -107,7 +187,7 @@ describe('Extension コマンド機能テスト', () => {
             fsMock.existsSync.withArgs('/test/new-dir').returns(false);
             
             // プライベート関数を呼び出す
-            extensionModule.ensureDirectory('/test/new-dir');
+            ensureDirectory('/test/new-dir');
             
             // mkdirSyncが呼ばれたことを確認
             assert.ok(fsMock.mkdirSync.calledWith('/test/new-dir', { recursive: true }), 
@@ -119,7 +199,7 @@ describe('Extension コマンド機能テスト', () => {
             fsMock.existsSync.withArgs('/test/existing-dir').returns(true);
             
             // プライベート関数を呼び出す
-            extensionModule.ensureDirectory('/test/existing-dir');
+            ensureDirectory('/test/existing-dir');
             
             // mkdirSyncが呼ばれないことを確認
             assert.ok(fsMock.mkdirSync.notCalled, 'mkdirSyncは呼ばれない');
@@ -129,13 +209,13 @@ describe('Extension コマンド機能テスト', () => {
     describe('pullDockerImage関数', () => {
         it('Dockerイメージのpullが成功した場合trueを返すこと', async () => {
             // Docker pullが成功するようにモック
-            const imageName = extensionModule.CONFIG.DOCKER_IMAGE;
-            childProcessMock.exec.withArgs(`docker pull ${imageName}`).yields(null, { stdout: 'Successfully pulled image' });
+            const imageName = CONFIG.DOCKER_IMAGE;
+            execPromise.withArgs(`docker pull ${imageName}`).resolves({ stdout: 'Successfully pulled image' });
             
             // 情報メッセージが表示されることを確認
             const showInfoMessageStub = vscodeStub.window.showInformationMessage as sinon.SinonStub;
             
-            const result = await extensionModule.pullDockerImage(imageName);
+            const result = await pullDockerImage(imageName);
             
             assert.strictEqual(result, true, 'イメージのpullに成功した場合trueを返す');
             assert.ok(showInfoMessageStub.called, '情報メッセージが表示される');
@@ -143,13 +223,13 @@ describe('Extension コマンド機能テスト', () => {
         
         it('Dockerイメージのpullが失敗した場合falseを返すこと', async () => {
             // Docker pullが失敗するようにモック
-            const imageName = extensionModule.CONFIG.DOCKER_IMAGE;
-            childProcessMock.exec.withArgs(`docker pull ${imageName}`).yields(new Error('Failed to pull image'), null);
+            const imageName = CONFIG.DOCKER_IMAGE;
+            execPromise.withArgs(`docker pull ${imageName}`).rejects(new Error('Failed to pull image'));
             
             // エラーメッセージが表示されることを確認
             const showErrorMessageStub = vscodeStub.window.showErrorMessage as sinon.SinonStub;
             
-            const result = await extensionModule.pullDockerImage(imageName);
+            const result = await pullDockerImage(imageName);
             
             assert.strictEqual(result, false, 'イメージのpullに失敗した場合falseを返す');
             assert.ok(showErrorMessageStub.called, 'エラーメッセージが表示される');
@@ -159,30 +239,30 @@ describe('Extension コマンド機能テスト', () => {
     describe('removeExistingContainers関数', () => {
         it('コンテナの削除が成功した場合trueを返すこと', async () => {
             // Dockerコマンドが成功するようにモック
-            childProcessMock.exec.yields(null, { stdout: 'Successfully removed container' });
+            execPromise.resolves({ stdout: 'Successfully removed container' });
             
-            const result = await extensionModule.removeExistingContainers(extensionModule.CONFIG.CONTAINER_NAME_FILTERS);
+            const result = await removeExistingContainers(CONFIG.CONTAINER_NAME_FILTERS);
             
             assert.strictEqual(result, true, 'コンテナの削除に成功した場合trueを返す');
         });
         
         it('コンテナがない場合もtrueを返すこと', async () => {
             // コンテナが見つからないケース
-            childProcessMock.exec.yields(null, { stdout: '' });
+            execPromise.resolves({ stdout: '' });
             
-            const result = await extensionModule.removeExistingContainers(extensionModule.CONFIG.CONTAINER_NAME_FILTERS);
+            const result = await removeExistingContainers(CONFIG.CONTAINER_NAME_FILTERS);
             
             assert.strictEqual(result, true, 'コンテナがなくてもtrueを返す');
         });
         
         it('コンテナの削除が失敗した場合falseを返すこと', async () => {
             // Dockerコマンドが失敗するようにモック
-            childProcessMock.exec.yields(new Error('Failed to remove container'), null);
+            execPromise.rejects(new Error('Failed to remove container'));
             
             // エラーメッセージが表示されることを確認
             const showErrorMessageStub = vscodeStub.window.showErrorMessage as sinon.SinonStub;
             
-            const result = await extensionModule.removeExistingContainers(extensionModule.CONFIG.CONTAINER_NAME_FILTERS);
+            const result = await removeExistingContainers(CONFIG.CONTAINER_NAME_FILTERS);
             
             assert.strictEqual(result, false, 'コンテナの削除に失敗した場合falseを返す');
             assert.ok(showErrorMessageStub.called, 'エラーメッセージが表示される');

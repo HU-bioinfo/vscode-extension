@@ -1,6 +1,6 @@
 services:
   container:
-    image: kokeh/hu_bioinfo:stable
+    image: hubioinfows/base_env:latest
     environment:
       - DISABLE_AUTH=true
       - GITHUB_PAT=${GITHUB_PAT}

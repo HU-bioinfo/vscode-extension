@@ -51,7 +51,10 @@ const window = {
     }),
     activeTerminal: null,
     terminals: [],
-    onDidChangeActiveTerminal: sinon.stub()
+    onDidChangeActiveTerminal: sinon.stub(),
+    withProgress: sinon.stub().callsFake(async (options: any, task: any) => {
+        return await task({ report: sinon.stub() });
+    })
 };
 
 const workspace = {
@@ -171,6 +174,11 @@ export default {
     StatusBarAlignment: {
         Left: 1,
         Right: 2
+    },
+    ProgressLocation: {
+        SourceControl: 1,
+        Window: 10,
+        Notification: 15
     },
     ViewColumn: {
         Active: -1,
