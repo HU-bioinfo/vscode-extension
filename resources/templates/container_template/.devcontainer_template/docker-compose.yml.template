@@ -3,9 +3,8 @@ services:
     image: hubioinfows/base_env:latest
     environment:
       - DISABLE_AUTH=true
-      - GITHUB_PAT=${GITHUB_PAT}
-      - CACHE_DIR=${CACHE_DIR}
-      - PROJ_DIR=${PROJ_DIR}
+      - CACHE_DIR=/home/user/cache
+      - PROJ_DIR=/home/user/proj
     volumes:
       - ../projects:/home/user/proj
       - ../../cache:/home/user/cache

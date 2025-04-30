@@ -388,7 +388,7 @@ export async function generateDockerCompose(context: vscode.ExtensionContext, do
         // テンプレートディレクトリのパスを取得
         const containerTemplateUri = getResourceUri(context, 'templates/container_template');
         const devcontainerTemplateUri = getResourceUri(context, 'templates/container_template/.devcontainer_template');
-        const envTemplateUri = getResourceUri(context, 'templates/.env.template');
+         const envTemplateUri = getResourceUri(context, 'templates/.env.template');
         
         // ファイルアクセス権の設定
         if (!await setupFolderPermissions(config.projectFolder, config.cacheFolder)) {
@@ -396,10 +396,12 @@ export async function generateDockerCompose(context: vscode.ExtensionContext, do
         }
         
         // 変数定義
-        const variables: Record<string, string> = {
-            GITHUB_PAT: config.githubPat,
+        const dockerComposeVariables: Record<string, string> = {
             PROJECT_FOLDER: config.projectFolder,
             CACHE_FOLDER: config.cacheFolder
+        };
+        const envVariables: Record<string, string> = {
+            GITHUB_PAT: config.githubPat,
         };
         
         // docker-compose.yml.templateを処理
@@ -408,13 +410,13 @@ export async function generateDockerCompose(context: vscode.ExtensionContext, do
             await templateProcessor.expandTemplateDirectory(
                 devcontainerTemplateUri.fsPath,
                 path.dirname(dockercomposeFilePath),
-                variables
+                dockerComposeVariables
             );
             
             // 共通の.envファイルを処理
             if (fs.existsSync(envTemplateUri.fsPath)) {
                 const envContent = fs.readFileSync(envTemplateUri.fsPath, 'utf8');
-                const processedEnvContent = templateProcessor.replaceVariables(envContent, variables);
+                const processedEnvContent = templateProcessor.replaceVariables(envContent, envVariables);
                 // 親ディレクトリ（containerディレクトリの親）に.envファイルを配置
                 const grandParentDirPath = path.dirname(path.dirname(path.dirname(dockercomposeFilePath)));
                 fs.writeFileSync(path.join(grandParentDirPath, '.env'), processedEnvContent, 'utf8');
