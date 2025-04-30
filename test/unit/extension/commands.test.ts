@@ -7,8 +7,8 @@ import { promisify } from 'util';
 
 // テスト用の設定定数を定義
 const CONFIG = {
-    DOCKER_IMAGE: 'kokeh/hu_bioinfo:stable',
-    CONTAINER_NAME_FILTERS: ['hu-bioinfo-workshop', 'work-env']
+    DOCKER_IMAGE: 'hubioinfows/base_env:latest',
+    CONTAINER_NAME_FILTERS: ['hu-bioinfo-workshop', 'bioinfo-launcher']
 };
 
 // テスト用のユーティリティ関数
@@ -24,7 +24,7 @@ async function preflightChecks(): Promise<boolean> {
         await execPromise('docker --version');
         return true;
     } catch (error) {
-        vscodeStub.window.showErrorMessage('[work-env] Dockerがインストールされていません。');
+        vscodeStub.window.showErrorMessage('[bioinfo-launcher] Dockerがインストールされていません。');
         return false;
     }
 }
@@ -56,10 +56,10 @@ function ensureDirectory(dirPath: string): void {
 async function pullDockerImage(imageName: string): Promise<boolean> {
     try {
         await execPromise(`docker pull ${imageName}`);
-        vscodeStub.window.showInformationMessage(`[work-env] イメージの取得が完了しました: ${imageName}`);
+        vscodeStub.window.showInformationMessage(`[bioinfo-launcher] イメージの取得が完了しました: ${imageName}`);
         return true;
     } catch (error) {
-        vscodeStub.window.showErrorMessage(`[work-env] イメージの取得に失敗しました: ${error}`);
+        vscodeStub.window.showErrorMessage(`[bioinfo-launcher] イメージの取得に失敗しました: ${error}`);
         return false;
     }
 }
@@ -72,7 +72,7 @@ async function removeExistingContainers(nameFilters: string[]): Promise<boolean>
         }
         return true;
     } catch (error) {
-        vscodeStub.window.showErrorMessage(`[work-env] コンテナの削除に失敗しました: ${error}`);
+        vscodeStub.window.showErrorMessage(`[bioinfo-launcher] コンテナの削除に失敗しました: ${error}`);
         return false;
     }
 }

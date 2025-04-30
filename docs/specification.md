@@ -1,8 +1,8 @@
-# work-env 拡張機能仕様書
+# bioinfo-launcher 拡張機能仕様書
 
 ## 概要
 
-`work-env` は、統一された R および Python 開発環境を提供する VSCode 拡張機能です。Docker コンテナを用いて、一貫性のある開発環境をセットアップし、ユーザーに提供します。
+`bioinfo-launcher` は、統一された R および Python 開発環境を提供する VSCode 拡張機能です。Docker コンテナを用いて、一貫性のある開発環境をセットアップし、ユーザーに提供します。
 
 ## 機能
 
@@ -22,13 +22,13 @@
 ### コンポーネント
 
 1. **VSCode 拡張機能**: ユーザーインターフェースとコマンド提供
-2. **Docker コンテナ**: R/Python 実行環境（kokeh/hu_bioinfo:stable イメージを使用）
+2. **Docker コンテナ**: R/Python 実行環境（hubioinfows/base_env:latest イメージを使用）
 3. **Docker Compose**: コンテナ設定と環境変数管理
 
 ### ディレクトリ構造
 
 ```
-work-env/
+bioinfo-launcher/
 ├── src/                  # 拡張機能のソースコード
 │   ├── extension.ts      # メインの拡張機能コード
 │   └── test-helper.ts    # テスト用ヘルパー関数
@@ -54,7 +54,7 @@ work-env/
 
 拡張機能は以下の 2 つのコマンドを提供します：
 
-1. **work-env.start-work-env**: 開発環境を起動するコマンド
+1. **bioinfo-launcher.start-launcher**: 開発環境を起動するコマンド
 
    - 初回実行時は設定ウィザードを表示
    - 親ディレクトリをユーザーが選択
@@ -64,7 +64,7 @@ work-env/
    - リソースフォルダからテンプレートを取得し、環境設定に基づいて Docker Compose/.devcontainer ファイルを生成
    - devcontainerの「Open Folder in Container」で親ディレクトリに展開されたcontainerディレクトリをdevcontainerとして開く
 
-2. **work-env.reset-config**: 設定をリセットするコマンド
+2. **bioinfo-launcher.reset-config**: 設定をリセットするコマンド
    - 既存のコンテナを削除
    - 設定ウィザードを再度表示
    - 新しい設定で環境を再構築
@@ -208,7 +208,7 @@ Docker がシステムにインストールされていない場合、拡張機�
 ```yaml
 services:
   container:
-    image: kokeh/hu_bioinfo:stable
+    image: hubioinfows/base_env:latest
     environment:
       - DISABLE_AUTH=true
       - GITHUB_PAT=${GITHUB_PAT}

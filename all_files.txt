@@ -16,7 +16,7 @@ out/src/test/extension.test.js.map
 out/src/test/extension.test.js
 out/test-resources/test-project/test-file-e2e.txt
 out/test-resources/test-project/test-file.txt
-out/test-resources/test-cache/work-env-config.json
+out/test-resources/test-cache/bioinfo-launcher-config.json
 out/error-handlers.js
 out/extension.js
 out/test-helper.js.map

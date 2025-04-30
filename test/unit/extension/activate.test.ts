@@ -60,8 +60,8 @@ describe('Extension アクティベーションテスト', () => {
         extensionModule.activate(mockContext);
         
         // コマンドが登録されたことを確認
-        assert.ok(vscodeStub.commands.registerCommand.calledWith('work-env.start-work-env'), 'work-env.start-work-envコマンドが登録される');
-        assert.ok(vscodeStub.commands.registerCommand.calledWith('work-env.reset-config'), 'work-env.reset-configコマンドが登録される');
+        assert.ok(vscodeStub.commands.registerCommand.calledWith('bioinfo-launcher.start-launcher'), 'bioinfo-launcher.start-launcherコマンドが登録される');
+        assert.ok(vscodeStub.commands.registerCommand.calledWith('bioinfo-launcher.reset-config'), 'bioinfo-launcher.reset-configコマンドが登録される');
         
         // サブスクリプションに追加されたことを確認
         assert.strictEqual(mockContext.subscriptions.length, 2, '2つのコマンドがサブスクリプションに追加される');

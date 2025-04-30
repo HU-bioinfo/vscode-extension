@@ -173,8 +173,8 @@ describe('入力バリデーションテスト', function() {
   });
 });
 
-// work-envエクステンションのエラーハンドリングテスト
-describe('Work Env Error Handlers', function() {
+// bioinfo-launcherエクステンションのエラーハンドリングテスト
+describe('HU bioinfo launcher Error Handlers', function() {
   beforeEach(function() {
     setupErrorTest();
   });

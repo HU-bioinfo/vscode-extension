@@ -1,9 +1,9 @@
 {
-  "name": "work-env",
-  "displayName": "work-env",
+  "name": "bioinfo-launcher",
+  "displayName": "HU bioinfo launcher",
   "publisher": "hu-bioinfo-workshop",
-  "description": "Work environment for R/Python analysis and development",
-  "repository": "https://github.com/HU-bioinfo/work-env-extension.git",
+  "description": "Launch well-organized environment for bioinformatics.",
+  "repository": "https://github.com/HU-bioinfo/vscode-extension.git",
   "version": "1.1.8",
   "engines": {
     "vscode": "^1.74.0"
@@ -27,12 +27,12 @@
   "contributes": {
     "commands": [
       {
-        "command": "work-env.start-work-env",
-        "title": "work-env: Start work-env"
+        "command": "bioinfo-launcher.start-launcher",
+        "title": "bioinfo-launcher: Start bioinfo-launcher"
       },
       {
-        "command": "work-env.reset-config",
-        "title": "work-env: Reset work-env Config"
+        "command": "bioinfo-launcher.reset-config",
+        "title": "bioinfo-launcher: Reset bioinfo-launcher Config"
       }
     ]
   },

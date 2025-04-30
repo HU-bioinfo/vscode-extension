@@ -1,6 +1,6 @@
 # Change Log
 
-All notable changes to the "work-env" extension will be documented in this file.
+All notable changes to the "bioinfo-launcher" extension will be documented in this file.
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
@@ -78,7 +78,7 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 
 - LICENSEファイルの追加（MIT License）
 - エラーメッセージの明確化
-  - すべてのメッセージに `[work-env]` プレフィックスを追加
+  - すべてのメッセージに `[bioinfo-launcher]` プレフィックスを追加
   - 発信元を識別しやすくするためのメッセージ改善
 
 ### Improved
