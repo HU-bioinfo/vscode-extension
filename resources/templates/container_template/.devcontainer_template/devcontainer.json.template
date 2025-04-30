@@ -1,5 +1,5 @@
 {
-    "name": "dev container",
+    "name": "bioinfo-launcher",
     "dockerComposeFile": "./docker-compose.yml",
     "service": "container",
     "customizations": {
