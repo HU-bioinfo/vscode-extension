@@ -9,7 +9,6 @@ import {
     parseErrorMessage, isDockerError, handleDockerError,
     validateInput, handleFileSystemError
 } from './error-handlers';
-import * as dockerInstaller from './docker-installer';
 import { TemplateProcessor } from './template-processor';
 
 const execPromise = promisify(exec);
@@ -769,28 +768,13 @@ export async function showDockerInstallPrompt(): Promise<boolean> {
 
 // Dockerインストールの実行
 export async function installDockerWithProgress(): Promise<boolean> {
-    // OS情報の検出
-    const osInfo = dockerInstaller.detectOS();
-    
-    // Linuxの場合はディストリビューション情報も取得
-    if (osInfo.platform === 'linux') {
-        osInfo.distro = await dockerInstaller.detectLinuxDistro();
-    }
-    
-    // Dockerインストール実行
-    const result = await dockerInstaller.installDocker(osInfo);
-    
-    if (result.success) {
-        vscode.window.showInformationMessage(`[bioinfo-launcher] ${result.message}`);
-        return true;
-    } else {
-        if (result.details) {
-            vscode.window.showErrorMessage(`[bioinfo-launcher] ${result.message}: ${result.details}`);
-        } else {
-            vscode.window.showErrorMessage(`[bioinfo-launcher] ${result.message}`);
-        }
-        return false;
-    }
+    // 元々 dockerInstaller.installDocker() を呼び出していましたが、
+    // docker-installer モジュールが存在しないため、この関数内で直接インストール処理を行うか、
+    // 別の既存関数を呼び出す必要があります。
+    // ここでは、単純に元の呼び出しを削除します。
+    // TODO: Dockerインストール処理をここに実装するか、適切な関数を呼び出す
+    console.log("TODO: Implement Docker installation logic here or call appropriate function.");
+    return false; // 仮にfalseを返します
 }
 
 // Export function for E2E testing
