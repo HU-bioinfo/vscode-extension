@@ -7,7 +7,8 @@
             "extensions": [
                 "ms-python.python",
                 "REditorsupport.r",
-                "github.copilot"
+                "ms-vscode.live-server",
+                "mechatroner.rainbow-csv"
             ],
             "settings": {
                 "r.rterm.linux": "/usr/local/bin/R",

@@ -243,12 +243,34 @@ async function installDockerOnLinux(
             
         } else {
             // その他のLinuxディストリビューション
-            progress.report({ increment: 60, message: 'Dockerをインストール中(汎用スクリプト)...' });
-            await execPromise('curl -fsSL https://get.docker.com -o get-docker.sh');
-            await execPromise('sudo sh get-docker.sh');
-            
-            progress.report({ increment: 80, message: 'ユーザー権限を設定中...' });
-            await execPromise(`sudo usermod -aG docker ${os.userInfo().username}`);
+            // 一時ディレクトリにスクリプトをダウンロードし実行
+            const tmpDir = os.tmpdir();
+            const scriptPath = path.join(tmpDir, 'get-docker.sh');
+
+            try {
+                progress.report({ increment: 60, message: `Dockerをインストール中(汎用スクリプトを ${tmpDir} にダウンロード)...` });
+                // 一時ディレクトリにダウンロード
+                await execPromise(`curl -fsSL https://get.docker.com -o ${scriptPath}`);
+
+                progress.report({ increment: 70, message: 'インストールスクリプトを実行中...' });
+                // ダウンロードしたスクリプトを実行
+                await execPromise(`sudo sh ${scriptPath}`);
+
+                progress.report({ increment: 80, message: 'ユーザー権限を設定中...' });
+                await execPromise(`sudo usermod -aG docker ${os.userInfo().username}`);
+
+            } finally {
+                // 一時ファイルを削除
+                if (fs.existsSync(scriptPath)) {
+                    try {
+                        fs.unlinkSync(scriptPath);
+                        // 削除が成功してもメッセージは表示しない（一時ファイルのため）
+                    } catch (deleteError) {
+                        // 削除に失敗した場合もエラーメッセージは出さない（一時ファイルのため）
+                        console.error(`[bioinfo-launcher] Warning: Failed to delete temporary file ${scriptPath}: ${deleteError}`);
+                    }
+                }
+            }
         }
         
         progress.report({ increment: 90, message: 'インストールを検証中...' });
