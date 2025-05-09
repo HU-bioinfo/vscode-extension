@@ -363,7 +363,7 @@ export function generateDockerCompose(
   const composeContent = `version: '3'
 services:
   workspace:
-    image: kokeh/hu_bioinfo:stable
+    image: hubioinfows/base_env:latest
     volumes:
       - "${normalizedProjectPath}:/workspace"
       - "${normalizedCachePath}:/cache"

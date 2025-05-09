@@ -1,14 +1,14 @@
 services:
   container:
     image: hubioinfows/base_env:latest
+    container_name: bioinfo-launcher-container
     environment:
       - DISABLE_AUTH=true
-      - GITHUB_PAT=${GITHUB_PAT}
-      - CACHE_DIR=${CACHE_DIR}
-      - PROJ_DIR=${PROJ_DIR}
+      - CACHE_DIR=/home/user/cache
+      - PROJ_DIR=/home/user/proj
+      - GITHUB_PAT={{GITHUB_PAT}}
     volumes:
       - ../projects:/home/user/proj
       - ../../cache:/home/user/cache
-    env_file:
-      - ../../.env
+      - .:/home/user/.devcontainer
     command: sleep infinity

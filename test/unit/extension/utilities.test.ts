@@ -77,7 +77,7 @@ describe('Extension ユーティリティ関数テスト', () => {
         
         it('JSONファイルを正しく読み込むこと', () => {
             // JSONデータをモック
-            const jsonData = { name: 'work-env', version: '1.0.0' };
+            const jsonData = { name: 'bioinfo-launcher', version: '1.0.0' };
             fsMock.existsSync.returns(true);
             fsMock.readFileSync.returns(JSON.stringify(jsonData));
             

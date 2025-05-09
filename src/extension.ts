@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { chmod } from 'node:fs';
 import * as fs from 'fs';
 import * as path from 'path';
 import { exec } from 'child_process';
@@ -15,8 +16,8 @@ const execPromise = promisify(exec);
 
 // 設定関連の定数
 export const CONFIG = {
-  DOCKER_IMAGE: 'kokeh/hu_bioinfo:stable',
-  CONTAINER_NAME_FILTERS: ['hu-bioinfo-workshop', 'work-env']
+  DOCKER_IMAGE: 'hubioinfows/base_env:latest',
+  CONTAINER_NAME_FILTERS: ['bioinfo-launcher']
 };
 
 /**
@@ -24,113 +25,61 @@ export const CONFIG = {
  * @param context VS Codeのエクステンションコンテキスト
  */
 export function activate(context: vscode.ExtensionContext) {
-    let startWorkEnvCommand = vscode.commands.registerCommand('work-env.start-work-env', async () => {
+    let startLauncherCommand = vscode.commands.registerCommand('bioinfo-launcher.start-launcher', async () => {
         try {
-            // 事前チェック
-            if (!await preflightChecks()) {
+            const settingfilePath = await preparation(context);
+            // settings.jsonの読み込み
+            if (!settingfilePath) {
                 return;
             }
+            const settings = JSON.parse(fs.readFileSync(settingfilePath, 'utf8'));
             
-            // DockerイメージのPull
-            if (!await pullDockerImage(CONFIG.DOCKER_IMAGE)) {
-                return;
-            }
-            
-            // 親ディレクトリの選択
-            const parentDirUri = await selectParentDirectory();
-            if (!parentDirUri) {
-                return;
-            }
-            
-            const parentDirPath = parentDirUri.fsPath;
-            const cacheDirPath = path.join(parentDirPath, "cache");
-            const containerDirPath = path.join(parentDirPath, "container");
-            const containerDevcontainerPath = path.join(containerDirPath, ".devcontainer");
-            const projectsDirPath = path.join(containerDirPath, "projects");
-            
-            // ディレクトリ構造の作成
-            vscode.window.showInformationMessage("[work-env] 開発環境を設定中...");
-            
-            // 各ディレクトリを作成
-            ensureDirectory(cacheDirPath);
-            ensureDirectory(containerDirPath);
-            ensureDirectory(projectsDirPath);
-            
-            // .devcontainerの設定
-            await setupDevContainer(context, containerDevcontainerPath, cacheDirPath, projectsDirPath);
-            
-            // GitHub PATの入力
-            const githubPat = await inputGitHubPAT();
-            if (!githubPat) {
-                return;
-            }
-            
-            // docker-compose.ymlの生成
-            const dockercomposeFilePath = path.join(containerDevcontainerPath, "docker-compose.yml");
-            await generateDockerCompose(
-                context, 
-                dockercomposeFilePath, 
-                {
-                    projectFolder: projectsDirPath,
-                    cacheFolder: cacheDirPath,
-                    githubPat
+            let containerDirPath: string | undefined;
+
+            // 親ディレクトリのパスが設定されていない、または無効な場合は新たに選択
+            if (!settings.parentDirPath || !await validateParentDirectory(settings.parentDirPath)) {
+                containerDirPath = await setup(context, settings, settingfilePath);
+                if (!containerDirPath) {
+                    return;
                 }
-            );
+           }else {
+                const parentDirUri = vscode.Uri.file(settings.parentDirPath);
+                const parentDirPath = parentDirUri.fsPath;
+                containerDirPath = path.join(parentDirPath, "container");
+            }
             
-            // プロジェクトテンプレートの展開
-            await setupProjectTemplate(context, projectsDirPath);
-            
-            // コンテナディレクトリをVSCodeで開く
+           // コンテナディレクトリをVSCodeで開く
             openFolderInContainer(containerDirPath);
         } catch (error) {
             const errorMessage = parseErrorMessage(error);
             if (isDockerError(error)) {
                 handleDockerError(error);
             } else {
-                vscode.window.showErrorMessage(`[work-env] エラー: ${errorMessage}`);
+                vscode.window.showErrorMessage(`[bioinfo-launcher] エラー: ${errorMessage}`);
             }
         }
     });
     
-    let resetConfigCommand = vscode.commands.registerCommand('work-env.reset-config', async () => {
+    let resetConfigCommand = vscode.commands.registerCommand('bioinfo-launcher.reset-config', async () => {
         try {
-            // 親ディレクトリの選択
-            const parentDirUri = await selectParentDirectory();
-            if (!parentDirUri) {
+            const settingfilePath = await preparation(context);
+            // settings.jsonの読み込み
+            if (!settingfilePath) {
                 return;
             }
+            const settings = JSON.parse(fs.readFileSync(settingfilePath, 'utf8'));
             
-            const parentDirPath = parentDirUri.fsPath;
-            const cacheDirPath = path.join(parentDirPath, "cache");
-            const containerDirPath = path.join(parentDirPath, "container");
-            const containerDevcontainerPath = path.join(containerDirPath, ".devcontainer");
-            
-            if (!fs.existsSync(containerDevcontainerPath)) {
-                vscode.window.showInformationMessage("まず 'Start work-env' を実行してください");
+            let containerDirPath: string | undefined;
+
+            // 親ディレクトリのパスが設定されていない、または無効な場合は新たに選択
+            containerDirPath = await setup(context, settings, settingfilePath);
+            if (!containerDirPath) {
                 return;
             }
-            
-            // GitHub PATの入力
-            const githubPat = await inputGitHubPAT();
-            if (!githubPat) {
-                return;
-            }
-            
-            // docker-compose.ymlの再生成
-            const dockercomposeFilePath = path.join(containerDevcontainerPath, "docker-compose.yml");
-            await generateDockerCompose(
-                context, 
-                dockercomposeFilePath, 
-                {
-                    projectFolder: path.join(containerDirPath, "projects"),
-                    cacheFolder: cacheDirPath,
-                    githubPat
-                }
-            );
             
             // コンテナの削除
             await removeExistingContainers(CONFIG.CONTAINER_NAME_FILTERS);
-            
+
             // コンテナディレクトリをVSCodeで開く
             openFolderInContainer(containerDirPath);
         } catch (error) {
@@ -138,12 +87,12 @@ export function activate(context: vscode.ExtensionContext) {
             if (isDockerError(error)) {
                 handleDockerError(error);
             } else {
-                vscode.window.showErrorMessage(`[work-env] エラー: ${errorMessage}`);
+                vscode.window.showErrorMessage(`[bioinfo-launcher] エラー: ${errorMessage}`);
             }
         }
     });
 
-    context.subscriptions.push(startWorkEnvCommand);
+    context.subscriptions.push(startLauncherCommand);
     context.subscriptions.push(resetConfigCommand);
 }
 
@@ -153,7 +102,7 @@ export function activate(context: vscode.ExtensionContext) {
  */
 function ensureDirectory(dirPath: string): void {
     if (!fs.existsSync(dirPath)) {
-        fs.mkdirSync(dirPath, { recursive: true });
+        fs.mkdirSync(dirPath, { recursive: true ,  mode: 0o777 });
     }
 }
 
@@ -170,7 +119,7 @@ async function selectParentDirectory(): Promise<vscode.Uri | undefined> {
     });
     
     if (!parentDirUri || parentDirUri.length === 0) {
-        vscode.window.showErrorMessage("[work-env] 親ディレクトリが選択されていません。");
+        vscode.window.showErrorMessage("[bioinfo-launcher] 親ディレクトリが選択されていません。");
         return undefined;
     }
     
@@ -190,11 +139,69 @@ async function inputGitHubPAT(): Promise<string | undefined> {
     });
     
     if (!githubPat) {
-        vscode.window.showErrorMessage("[work-env] GitHub PATが必要です。");
+        vscode.window.showErrorMessage("[bioinfo-launcher] GitHub PATが必要です。");
         return undefined;
     }
     
     return githubPat;
+}
+
+/**
+ * 親ディレクトリの有効性を確認する
+ * @param parentDirPath 親ディレクトリのパス
+ * @returns 有効な場合はtrue、無効な場合はfalse
+ */
+async function validateParentDirectory(parentDirPath: string): Promise<boolean> {
+    if (!fs.existsSync(parentDirPath)) {
+        return false;
+    }
+    
+    const containerDirPath = path.join(parentDirPath, "container");
+    const devcontainerDirPath = path.join(containerDirPath, ".devcontainer");
+    if (!fs.existsSync(devcontainerDirPath)) {
+        return false;
+    }
+    
+    if (!fs.existsSync(path.join(devcontainerDirPath, "docker-compose.yml"))) {
+        return false;
+    }
+    if (!fs.existsSync(path.join(devcontainerDirPath, "devcontainer.json"))) {
+        return false;
+    }
+    return true;
+}
+
+/**
+ * 事前準備を行う
+ * @returns 成功した場合はsettings.jsonのパス、失敗した場合はundefined
+ */
+export async function preparation(context: vscode.ExtensionContext): Promise<string | undefined> {
+    try {
+        // 事前チェック
+        if (!await preflightChecks()) {
+            return;
+        }
+        
+        // DockerイメージのPull
+        if (!await pullDockerImage(CONFIG.DOCKER_IMAGE)) {
+            return;
+        }
+
+        const extensionStoragePath = context.globalStorageUri.fsPath;
+        const settingfilePath = path.join(extensionStoragePath, "settings.json");
+        // settings.jsonの存在確認
+        if (!fs.existsSync(settingfilePath)) {
+            // settings.jsonが存在しない場合は作成
+            fs.mkdirSync(extensionStoragePath, { recursive: true });
+            fs.writeFileSync(settingfilePath, JSON.stringify({}));
+        }
+
+        return settingfilePath;
+    } catch (error) {
+        const errorMessage = parseErrorMessage(error);
+        vscode.window.showErrorMessage(`[bioinfo-launcher] エラー: ${errorMessage}`);
+        return undefined;
+    }
 }
 
 /**
@@ -229,7 +236,7 @@ export async function preflightChecks(): Promise<boolean> {
  */
 export async function pullDockerImage(imageName: string): Promise<boolean> {
     try {
-        vscode.window.showInformationMessage(`[work-env] Dockerイメージ ${imageName} を取得中...`);
+        vscode.window.showInformationMessage(`[bioinfo-launcher] Dockerイメージ ${imageName} を取得中...`);
         await execPromise(`docker pull ${imageName}`);
         return true;
     } catch (error) {
@@ -267,7 +274,7 @@ export async function isDockerInstalled(): Promise<boolean> {
 
 // Dockerがインストールされていない場合のエラーメッセージを表示
 export function showDockerNotInstalledError() {
-    const message = '[work-env] Dockerがインストールされていません。この拡張機能を使用する前にDockerをインストールしてください。';
+    const message = '[bioinfo-launcher] Dockerがインストールされていません。この拡張機能を使用する前にDockerをインストールしてください。';
     const installButton = 'インストールガイド';
     
     vscode.window.showErrorMessage(message, installButton).then(selection => {
@@ -295,7 +302,7 @@ export async function checkDockerPermissions(): Promise<boolean> {
 
 // Dockerの権限エラーの場合のメッセージを表示
 export function showDockerPermissionError() {
-    const message = '[work-env] Dockerの実行権限がありません。';
+    const message = '[bioinfo-launcher] Dockerの実行権限がありません。';
     const helpButton = '対処方法を確認';
     
     let helpMessage = '';
@@ -327,6 +334,68 @@ export function getResourceUri(context: vscode.ExtensionContext, relativePath: s
     return vscode.Uri.joinPath(context.extensionUri, 'resources', relativePath);
 }
 
+// 全てのセットアップを行う関数
+export async function setup(context: vscode.ExtensionContext, settings: any ,settingfilePath: string): Promise<string|undefined> {
+    try {
+        // 親ディレクトリの選択
+        const parentDirUri = await selectParentDirectory();
+        if (!parentDirUri) {
+            return;
+        }
+
+        const parentDirPath = parentDirUri.fsPath;
+        const cacheDirPath = path.join(parentDirPath, "cache");
+        const containerDirPath = path.join(parentDirPath, "container");
+        const containerDevcontainerPath = path.join(containerDirPath, ".devcontainer");
+        const projectsDirPath = path.join(containerDirPath, "projects");
+        
+        // ディレクトリ構造の作成
+        vscode.window.showInformationMessage("[bioinfo-launcher] 開発環境を設定中...");
+        
+        // 各ディレクトリを作成
+        ensureDirectory(cacheDirPath);
+        ensureDirectory(containerDirPath);
+        ensureDirectory(projectsDirPath);
+        
+        // .devcontainerの設定
+        await setupDevContainer(context, containerDevcontainerPath, cacheDirPath, projectsDirPath);
+        
+        // GitHub PATの入力
+        const githubPat = await inputGitHubPAT();
+        if (!githubPat) {
+            return;
+        }
+        
+        // docker-compose.ymlの生成
+        const dockercomposeFilePath = path.join(containerDevcontainerPath, "docker-compose.yml");
+        await generateDockerCompose(
+            context, 
+            dockercomposeFilePath, 
+            {
+                projectFolder: projectsDirPath,
+                cacheFolder: cacheDirPath,
+                githubPat
+            }
+        );
+        
+        // プロジェクトテンプレートの展開
+        await setupProjectTemplate(context, projectsDirPath);
+
+        // 親ディレクトリのパスをsettingsに保存
+        if (settings.parentDirPath !== parentDirPath) {
+            settings.parentDirPath = parentDirPath;
+            fs.writeFileSync(settingfilePath, JSON.stringify(settings, null, 2));
+            vscode.window.showInformationMessage("[bioinfo-launcher] 親ディレクトリのパスを設定に保存しました");
+        }
+        
+        return containerDirPath;
+    } catch (error) {
+        const errorMessage = parseErrorMessage(error);
+        vscode.window.showErrorMessage(`[bioinfo-launcher] エラー: ${errorMessage}`);
+        return undefined;
+    }
+}
+
 // .devcontainerフォルダをセットアップする関数
 export async function setupDevContainer(context: vscode.ExtensionContext, targetPath: string, cacheDirPath: string, projectsDirPath: string) {
     try {
@@ -335,7 +404,7 @@ export async function setupDevContainer(context: vscode.ExtensionContext, target
         
         // .devcontainerディレクトリが存在しない場合は作成
         if (!fs.existsSync(targetPath)) {
-            fs.mkdirSync(targetPath, { recursive: true });
+            fs.mkdirSync(targetPath, { recursive: true ,  mode: 0o777 });
         }
         
         // コンテナテンプレートディレクトリのパスを取得
@@ -356,10 +425,10 @@ export async function setupDevContainer(context: vscode.ExtensionContext, target
             variables
         );
         
-        vscode.window.showInformationMessage("[work-env] devcontainer設定を作成しました");
+        vscode.window.showInformationMessage("[bioinfo-launcher] devcontainer設定を作成しました");
     } catch (error) {
         handleFileSystemError(error);
-        vscode.window.showErrorMessage(`[work-env] devcontainer設定の作成中にエラーが発生しました: ${parseErrorMessage(error)}`);
+        vscode.window.showErrorMessage(`[bioinfo-launcher] devcontainer設定の作成中にエラーが発生しました: ${parseErrorMessage(error)}`);
         throw error; // 上位の関数でエラーハンドリングができるように再スロー
     }
 }
@@ -373,9 +442,9 @@ export async function openFolderInContainer(folderPath: string) {
             vscode.Uri.file(folderPath)
         );
         
-        vscode.window.showInformationMessage("[work-env] コンテナで開発環境を起動しました");
+        vscode.window.showInformationMessage("[bioinfo-launcher] コンテナで開発環境を起動しました");
     } catch (error) {
-        vscode.window.showErrorMessage(`[work-env] コンテナでフォルダを開くことができませんでした: ${parseErrorMessage(error)}`);
+        vscode.window.showErrorMessage(`[bioinfo-launcher] コンテナでフォルダを開くことができませんでした: ${parseErrorMessage(error)}`);
     }
 }
 
@@ -388,7 +457,7 @@ export async function generateDockerCompose(context: vscode.ExtensionContext, do
         // テンプレートディレクトリのパスを取得
         const containerTemplateUri = getResourceUri(context, 'templates/container_template');
         const devcontainerTemplateUri = getResourceUri(context, 'templates/container_template/.devcontainer_template');
-        const envTemplateUri = getResourceUri(context, 'templates/.env.template');
+        // const envTemplateUri = getResourceUri(context, 'templates/.env.template');
         
         // ファイルアクセス権の設定
         if (!await setupFolderPermissions(config.projectFolder, config.cacheFolder)) {
@@ -396,10 +465,12 @@ export async function generateDockerCompose(context: vscode.ExtensionContext, do
         }
         
         // 変数定義
+        // const dockerComposeVariables: Record<string, string> = {
+            // PROJECT_FOLDER: config.projectFolder,
+            // CACHE_FOLDER: config.cacheFolder
+        // };
         const variables: Record<string, string> = {
             GITHUB_PAT: config.githubPat,
-            PROJECT_FOLDER: config.projectFolder,
-            CACHE_FOLDER: config.cacheFolder
         };
         
         // docker-compose.yml.templateを処理
@@ -412,22 +483,22 @@ export async function generateDockerCompose(context: vscode.ExtensionContext, do
             );
             
             // 共通の.envファイルを処理
-            if (fs.existsSync(envTemplateUri.fsPath)) {
-                const envContent = fs.readFileSync(envTemplateUri.fsPath, 'utf8');
-                const processedEnvContent = templateProcessor.replaceVariables(envContent, variables);
+            // if (fs.existsSync(envTemplateUri.fsPath)) {
+                // const envContent = fs.readFileSync(envTemplateUri.fsPath, 'utf8');
+                // const processedEnvContent = templateProcessor.replaceVariables(envContent, envVariables);
                 // 親ディレクトリ（containerディレクトリの親）に.envファイルを配置
-                const grandParentDirPath = path.dirname(path.dirname(path.dirname(dockercomposeFilePath)));
-                fs.writeFileSync(path.join(grandParentDirPath, '.env'), processedEnvContent, 'utf8');
-            }
+                // const grandParentDirPath = path.dirname(path.dirname(path.dirname(dockercomposeFilePath)));
+                // fs.writeFileSync(path.join(grandParentDirPath, '.env'), processedEnvContent, 'utf8');
+            // }
             
-            vscode.window.showInformationMessage("[work-env] Docker Compose設定を生成しました");
+            vscode.window.showInformationMessage("[bioinfo-launcher] Docker Compose設定を生成しました");
             return true;
         } catch (err) {
-            vscode.window.showErrorMessage(`[work-env] テンプレート展開に失敗しました: ${parseErrorMessage(err)}`);
+            vscode.window.showErrorMessage(`[bioinfo-launcher] テンプレート展開に失敗しました: ${parseErrorMessage(err)}`);
             return false;
         }
     } catch (error) {
-        vscode.window.showErrorMessage(`[work-env] Docker Compose設定の生成中にエラーが発生しました: ${parseErrorMessage(error)}`);
+        vscode.window.showErrorMessage(`[bioinfo-launcher] Docker Compose設定の生成中にエラーが発生しました: ${parseErrorMessage(error)}`);
         return false;
     }
 }
@@ -443,7 +514,7 @@ export async function setupProjectTemplate(context: vscode.ExtensionContext, pro
         
         // プロジェクトディレクトリが存在しない場合は作成
         if (!fs.existsSync(projectFolder)) {
-            fs.mkdirSync(projectFolder, { recursive: true });
+            fs.mkdirSync(projectFolder, { recursive: true ,  mode: 0o777 });
         }
         
         // 変数定義（必要に応じて）
@@ -456,10 +527,10 @@ export async function setupProjectTemplate(context: vscode.ExtensionContext, pro
             variables
         );
         
-        vscode.window.showInformationMessage("[work-env] プロジェクトテンプレートを展開しました");
+        vscode.window.showInformationMessage("[bioinfo-launcher] プロジェクトテンプレートを展開しました");
         return true;
     } catch (error) {
-        vscode.window.showErrorMessage(`[work-env] プロジェクトテンプレートの展開中にエラーが発生しました: ${parseErrorMessage(error)}`);
+        vscode.window.showErrorMessage(`[bioinfo-launcher] プロジェクトテンプレートの展開中にエラーが発生しました: ${parseErrorMessage(error)}`);
         return false;
     }
 }
@@ -472,13 +543,15 @@ export async function setupProjectTemplate(context: vscode.ExtensionContext, pro
 // フォルダのアクセス権を設定する関数
 export async function setupFolderPermissions(projectFolder: string, cacheFolder: string): Promise<boolean> {
     try {
-        await vscode.commands.executeCommand("workbench.action.terminal.new");
+        /* await vscode.commands.executeCommand("workbench.action.terminal.new");
         const terminal = vscode.window.activeTerminal;
         terminal?.sendText(`chmod 777 "${projectFolder}"`);
-        terminal?.sendText(`chmod 777 "${cacheFolder}"`);
+        terminal?.sendText(`chmod 777 "${cacheFolder}"`); */
+        await fs.chmodSync(projectFolder, 0o777);
+        await fs.chmodSync(cacheFolder, 0o777);
         return true;
     } catch (error) {
-        vscode.window.showErrorMessage(`[work-env] 権限エラー: フォルダのアクセス権を変更できません。${parseErrorMessage(error)}`);
+        vscode.window.showErrorMessage(`[bioinfo-launcher] 権限エラー: フォルダのアクセス権を変更できません。${parseErrorMessage(error)}`);
         return false;
     }
 }
@@ -487,7 +560,7 @@ export async function setupFolderPermissions(projectFolder: string, cacheFolder:
 export function copyFolderRecursiveSync(source: string, target: string, fsModule: any = fs) {
     try {
         if (!fsModule.existsSync(source)) {return;}
-        if (!fsModule.existsSync(target)) {fsModule.mkdirSync(target, { recursive: true });}
+        if (!fsModule.existsSync(target)) {fsModule.mkdirSync(target, { recursive: true ,  mode: 0o777 });}
 
         const files = fsModule.readdirSync(source);
         for (const file of files) {
@@ -513,7 +586,7 @@ export function generateDockerComposeFiles(config: {projectFolder: string, cache
     try {
         const devcontainerPath = path.join(os.tmpdir(), '.devcontainer');
         if (!fs.existsSync(devcontainerPath)) {
-            fs.mkdirSync(devcontainerPath, { recursive: true });
+            fs.mkdirSync(devcontainerPath, { recursive: true ,  mode: 0o777 });
         }
         
         const dockerComposePath = path.join(devcontainerPath, 'docker-compose.yml');
@@ -532,7 +605,7 @@ services:
         return true;
     } catch (error) {
         handleFileSystemError(error);
-        vscode.window.showErrorMessage(`[work-env] Docker Composeファイルの生成に失敗しました: ${parseErrorMessage(error)}`);
+        vscode.window.showErrorMessage(`[bioinfo-launcher] Docker Composeファイルの生成に失敗しました: ${parseErrorMessage(error)}`);
         return false;
     }
 }
@@ -540,7 +613,7 @@ services:
 /**
  * 開発環境を起動する
  */
-export async function startWorkEnv(): Promise<void> {
+export async function startLauncher(): Promise<void> {
     try {
         // 事前チェック
         if (!await preflightChecks()) {
@@ -560,7 +633,7 @@ export async function startWorkEnv(): Promise<void> {
         const projectsDirPath = path.join(containerDirPath, "projects");
         
         // テスト用コンテキスト
-        const context = vscode.extensions.getExtension('hu-bioinfo-workshop.work-env')?.extensionUri || { fsPath: path.join(os.tmpdir(), 'work-env-extension') };
+        const context = vscode.extensions.getExtension('hu-bioinfo-workshop.bioinfo-launcher')?.extensionUri || { fsPath: path.join(os.tmpdir(), 'bioinfo-launcher-extension') };
         
         // DockerイメージのPull
         if (!await pullDockerImage(CONFIG.DOCKER_IMAGE)) {
@@ -603,7 +676,7 @@ export async function startWorkEnv(): Promise<void> {
         if (isDockerError(error)) {
             handleDockerError(error);
         } else {
-            vscode.window.showErrorMessage(`[work-env] エラー: ${errorMessage}`);
+            vscode.window.showErrorMessage(`[bioinfo-launcher] エラー: ${errorMessage}`);
         }
     }
 }
@@ -621,7 +694,7 @@ export async function executeDockerCommand(command: string): Promise<string | nu
         if (isDockerError(error)) {
             handleDockerError(error);
         } else {
-            vscode.window.showErrorMessage(`[work-env] コマンド実行エラー: ${parseErrorMessage(error)}`);
+            vscode.window.showErrorMessage(`[bioinfo-launcher] コマンド実行エラー: ${parseErrorMessage(error)}`);
         }
         return null;
     }
@@ -630,7 +703,7 @@ export async function executeDockerCommand(command: string): Promise<string | nu
 /**
  * 設定をリセットする
  */
-export async function resetWorkEnvConfig(): Promise<void> {
+export async function resetLauncherConfig(): Promise<void> {
     try {
         // 親ディレクトリの選択
         const parentDirUri = await selectParentDirectory();
@@ -645,12 +718,12 @@ export async function resetWorkEnvConfig(): Promise<void> {
         const projectsDirPath = path.join(containerDirPath, "projects");
         
         if (!fs.existsSync(containerDevcontainerPath)) {
-            vscode.window.showInformationMessage("まず 'Start work-env' を実行してください");
+            vscode.window.showInformationMessage("まず 'Start bioinfo-launcher' を実行してください");
             return;
         }
         
         // テスト用コンテキスト
-        const context = vscode.extensions.getExtension('hu-bioinfo-workshop.work-env')?.extensionUri || { fsPath: path.join(os.tmpdir(), 'work-env-extension') };
+        const context = vscode.extensions.getExtension('hu-bioinfo-workshop.bioinfo-launcher')?.extensionUri || { fsPath: path.join(os.tmpdir(), 'bioinfo-launcher-extension') };
         
         // GitHub PATの入力
         const githubPat = await inputGitHubPAT();
@@ -676,9 +749,9 @@ export async function resetWorkEnvConfig(): Promise<void> {
         // コンテナディレクトリをVSCodeで開く
         openFolderInContainer(containerDirPath);
         
-        vscode.window.showInformationMessage("[work-env] 設定をリセットしました。");
+        vscode.window.showInformationMessage("[bioinfo-launcher] 設定をリセットしました。");
     } catch (error) {
-        vscode.window.showErrorMessage(`[work-env] 設定のリセットに失敗しました: ${parseErrorMessage(error)}`);
+        vscode.window.showErrorMessage(`[bioinfo-launcher] 設定のリセットに失敗しました: ${parseErrorMessage(error)}`);
     }
 }
 
@@ -712,13 +785,13 @@ export async function installDockerWithProgress(): Promise<boolean> {
     const result = await dockerInstaller.installDocker(osInfo);
     
     if (result.success) {
-        vscode.window.showInformationMessage(`[work-env] ${result.message}`);
+        vscode.window.showInformationMessage(`[bioinfo-launcher] ${result.message}`);
         return true;
     } else {
         if (result.details) {
-            vscode.window.showErrorMessage(`[work-env] ${result.message}: ${result.details}`);
+            vscode.window.showErrorMessage(`[bioinfo-launcher] ${result.message}: ${result.details}`);
         } else {
-            vscode.window.showErrorMessage(`[work-env] ${result.message}`);
+            vscode.window.showErrorMessage(`[bioinfo-launcher] ${result.message}`);
         }
         return false;
     }
@@ -745,7 +818,7 @@ export async function validateSettings(): Promise<boolean> {
     
     return true;
   } catch (error) {
-    vscode.window.showErrorMessage(`[work-env] 設定のバリデーションに失敗しました: ${parseErrorMessage(error)}`);
+    vscode.window.showErrorMessage(`[bioinfo-launcher] 設定のバリデーションに失敗しました: ${parseErrorMessage(error)}`);
     return false;
   }
 }
@@ -774,8 +847,8 @@ export const EXPORTED_FUNCTIONS = {
     validateInput,
     removeExistingContainers,
     setupProjectTemplate,
-    startWorkEnv,
-    resetWorkEnvConfig,
+    startLauncher,
+    resetLauncherConfig,
     showDockerNotInstalledError,
     checkDockerPermissions,
     showDockerPermissionError,
@@ -785,8 +858,8 @@ export const EXPORTED_FUNCTIONS = {
 // commonjs用にエクスポート
 module.exports = {
     activate,
-    startWorkEnv,
-    resetWorkEnvConfig,
+    startLauncher,
+    resetLauncherConfig,
     setupDevContainer,
     generateDockerCompose,
     openFolderInContainer,

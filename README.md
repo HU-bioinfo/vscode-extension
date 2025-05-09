@@ -1,6 +1,6 @@
-# work-env
+# HU bioinfo launcher
 
-`work-env` は、統一された R および Python 開発環境を提供する解析用の VSCode 拡張機能です。Docker コンテナを用いて、一貫性のある開発環境をセットアップし、ユーザーに提供します。
+`HU bioinfo launcher` は、統一された R および Python 開発環境を提供する解析用の VSCode 拡張機能です。Docker コンテナを用いて、一貫性のある開発環境をセットアップし、ユーザーに提供します。
 
 ## 機能
 
@@ -17,7 +17,7 @@
 
 ## 基本的な使い方
 
-1. コマンドパレットから `work-env: Start work-env` を実行
+1. コマンドパレットから `bioinfo-launcher: Start bioinfo-launcher` を実行
 2. 作業環境ディレクトリとGitHub PATを設定
 3. 環境構築後、コンテナ内でVS Codeが開き作業開始
 
@@ -25,7 +25,6 @@
 
 ```
 選択した親ディレクトリ/
-├── .env                  # 環境変数設定ファイル
 ├── cache/                # キャッシュディレクトリ
 └── container/            # コンテナ設定とプロジェクト
 ```
@@ -35,8 +34,6 @@
 詳細な情報は以下のドキュメントを参照してください:
 
 - [仕様書](docs/specification.md) - 拡張機能の詳細仕様と実装内容
-- [テスト戦略](docs/testing.md) - テスト方法と実行方法
-- [変更履歴](CHANGELOG.md) - 各バージョンの変更点
 
 ## License
 
