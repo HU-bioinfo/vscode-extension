@@ -15,7 +15,8 @@
 - **サポートされている OS**: Linux, macOS
 - **Windows 対応**: WSL（Windows Subsystem for Linux）経由で使用可能
 - **事前要件**:
-  - Docker がインストールされていること（自動インストール機能あり）
+  - Docker がインストールされていること
+  - Dev Container エクステンションがインストールされていること
 
 ## アーキテクチャ
 
@@ -69,69 +70,6 @@ bioinfo-launcher/
    - 設定ウィザードを再度表示
    - 新しい設定で環境を再構築
 
-## Docker インストール機能
-
-Docker がシステムにインストールされていない場合、拡張機能は以下の機能を提供します：
-
-1. **Docker インストール検出**: システムに Docker がインストールされているかを確認
-2. **OS 検出**: ユーザーの OS を自動的に検出（Linux、macOS、Windows、WSL）
-3. **自動インストールオプション**: Linux ベースの Docker をコマンドラインからインストールするオプションを提供
-4. **インストールプロセス**:
-   - Linux: 適切なディストリビューション向けインストールスクリプトを実行（Docker Engine）
-   - macOS: Homebrew を使用して Docker Engine をインストール
-   - Windows（非 WSL 環境）: WSL2 で Ubuntu などの Linux カーネルを使用するように警告し、WSL2 セットアップガイドを表示
-   - Windows（WSL 環境）: WSL 内の Linux ディストリビューションに Docker Engine を直接インストール
-5. **進捗表示**: インストールプロセスの進捗状況を表示
-6. **検証**: インストール完了後に Docker が正常に動作することを検証
-7. **ユーザー権限管理**: 必要に応じて Docker グループにユーザーを追加し、sudo なしで Docker コマンドを実行できるように設定
-
-### Docker インストールの詳細フロー
-
-1. **OS 検出フェーズ**:
-
-   - プラットフォーム（Windows/macOS/Linux）の検出
-   - Windows の場合、WSL 環境かどうかを検出
-   - Linux の場合、ディストリビューション（Ubuntu/Debian/CentOS など）を検出
-
-2. **インストール前確認**:
-
-   - ユーザーに Docker インストールの確認メッセージを表示
-   - Windows 非 WSL 環境の場合、WSL2 の使用を推奨するメッセージを表示し、インストールをキャンセルするオプションを提供
-
-3. **インストール実行**:
-
-   - Linux/WSL (Ubuntu/Debian): apt を使用した Docker Engine のインストール
-
-   ```bash
-   sudo apt-get update
-   sudo apt-get install -y docker-ce docker-ce-cli containerd.io
-   sudo usermod -aG docker $USER
-   ```
-
-   - Linux/WSL (CentOS/RHEL): yum を使用した Docker Engine のインストール
-
-   ```bash
-   sudo yum install -y docker-ce docker-ce-cli containerd.io
-   sudo systemctl start docker
-   sudo usermod -aG docker $USER
-   ```
-
-   - macOS: Homebrew を使用した Docker のインストール
-
-   ```bash
-   brew install --cask docker
-   ```
-
-4. **インストール後設定**:
-
-   - Docker サービスの起動確認
-   - ユーザーを docker グループに追加（再ログイン要求）
-   - Docker の基本的な動作テスト（hello-world イメージの実行）
-
-5. **トラブルシューティング**:
-   - インストール失敗時の詳細なエラーログ表示
-   - 一般的な問題の解決策を提案
-   - 手動インストール方法へのリンク表示
 
 ## 設定プロセス
 

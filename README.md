@@ -13,7 +13,8 @@
 - **サポートされている OS**: Linux, macOS
 - **Windows 対応**: WSL（Windows Subsystem for Linux）経由で使用可能
 - **事前要件**:
-  - Docker がインストールされていること（自動インストール機能あり）
+  - Docker がインストールされていること
+  - Dev Container エクステンションがインストールされていること
 
 ## 基本的な使い方
 

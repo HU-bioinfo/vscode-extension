@@ -212,11 +212,7 @@ export async function preflightChecks(): Promise<boolean> {
     // Dockerがインストールされているか確認
     if (!await isDockerInstalled()) {
         // Docker未インストールの場合、インストールを提案
-        const installDocker = await showDockerInstallPrompt();
-        if (installDocker) {
-            // インストールを実行し、その結果を返す
-            return await installDockerWithProgress();
-        }
+        showDockerNotInstalledError();
         return false;
     }
 
