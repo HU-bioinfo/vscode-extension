@@ -1,7 +1,7 @@
 import * as assert from 'assert';
 import * as sinon from 'sinon';
 import { loadTemplateProcessorModule } from '../../util/moduleloader';
-import vscodeStub from '../../mock/vscode.mock';
+import * as vscodeMock from '../../mock/vscode.mock';
 import * as path from 'path';
 import * as fs from 'fs';
 
@@ -32,7 +32,8 @@ describe('Template Processor テスト', () => {
                 }
             }),
             rmdirSync: sinon.stub(),
-            unlinkSync: sinon.stub()
+            unlinkSync: sinon.stub(),
+            copyFileSync: sinon.stub()
         };
         
         // lstatSyncとstatSyncの動作を定義

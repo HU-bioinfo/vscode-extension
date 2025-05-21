@@ -4,7 +4,7 @@
   "publisher": "hu-bioinfo-workshop",
   "description": "Launch well-organized environment for bioinformatics.",
   "repository": "https://github.com/HU-bioinfo/vscode-extension.git",
-  "version": "1.3.0",
+  "version": "1.4.1",
   "engines": {
     "vscode": "^1.74.0"
   },
@@ -22,7 +22,8 @@
   ],
   "activationEvents": [
     "onCommand:bioinfo-launcher.start-launcher",
-    "onCommand:bioinfo-launcher.reset-config"
+    "onCommand:bioinfo-launcher.reset-config",
+    "onCommand:bioinfo-launcher.config-container"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -34,6 +35,10 @@
       {
         "command": "bioinfo-launcher.reset-config",
         "title": "bioinfo-launcher: Reset bioinfo-launcher Config"
+      },
+      {
+        "command": "bioinfo-launcher.config-container",
+        "title": "bioinfo-launcher: Configure Container Image"
       }
     ]
   },

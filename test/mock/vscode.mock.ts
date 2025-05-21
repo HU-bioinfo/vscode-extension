@@ -37,6 +37,7 @@ const window = {
     showWarningMessage: sinon.stub().resolves(),
     showInputBox: sinon.stub().resolves(),
     showOpenDialog: sinon.stub().resolves([]),
+    showQuickPick: sinon.stub().resolves(),
     createTerminal: sinon.stub().returns({
         sendText: sinon.stub(),
         show: sinon.stub(),
@@ -151,7 +152,57 @@ const ThemeIcon = function(id: string, color?: any) {
 };
 
 // Export mock VSCode API
-export default {
+// export default { // Remove default export
+// window,
+// workspace,
+// commands,
+// env,
+// extensions,
+// Uri,
+// ExtensionContext,
+// ThemeColor,
+// ThemeIcon,
+// Event関連
+// EventEmitter: class {
+// event: any;
+// constructor() {
+// this.event = () => ({ dispose: () => {} });
+// }
+// fire() {}
+// dispose() {}
+// },
+// 各種定数
+// StatusBarAlignment: {
+// Left: 1,
+// Right: 2
+// },
+// ProgressLocation: {
+// SourceControl: 1,
+// Window: 10,
+// Notification: 15
+// },
+// ViewColumn: {
+// Active: -1,
+// Beside: -2,
+// One: 1,
+// Two: 2,
+// Three: 3
+// },
+// DiagnosticSeverity: {
+// Error: 0,
+// Warning: 1,
+// Information: 2,
+// Hint: 3
+// },
+// ConfigurationTarget: {
+// Global: 1,
+// Workspace: 2,
+// WorkspaceFolder: 3
+// }
+// }; 
+
+// Export individual mocks
+export {
     window,
     workspace,
     commands,
@@ -160,42 +211,53 @@ export default {
     Uri,
     ExtensionContext,
     ThemeColor,
-    ThemeIcon,
-    // Event関連
-    EventEmitter: class {
-        event: any;
-        constructor() {
-            this.event = () => ({ dispose: () => {} });
-        }
-        fire() {}
-        dispose() {}
-    },
-    // 各種定数
-    StatusBarAlignment: {
-        Left: 1,
-        Right: 2
-    },
-    ProgressLocation: {
-        SourceControl: 1,
-        Window: 10,
-        Notification: 15
-    },
-    ViewColumn: {
-        Active: -1,
-        Beside: -2,
-        One: 1,
-        Two: 2,
-        Three: 3
-    },
-    DiagnosticSeverity: {
-        Error: 0,
-        Warning: 1,
-        Information: 2,
-        Hint: 3
-    },
-    ConfigurationTarget: {
-        Global: 1,
-        Workspace: 2,
-        WorkspaceFolder: 3
+    ThemeIcon
+};
+
+export const EventEmitter = class {
+    event: any;
+    constructor() {
+        this.event = () => ({ dispose: () => {} });
     }
-}; 
+    fire() {}
+    dispose() {}
+};
+
+export const StatusBarAlignment = {
+    Left: 1,
+    Right: 2
+};
+
+export const ProgressLocation = {
+    SourceControl: 1,
+    Window: 10,
+    Notification: 15
+};
+
+export const ViewColumn = {
+    Active: -1,
+    Beside: -2,
+    One: 1,
+    Two: 2,
+    Three: 3
+};
+
+export const DiagnosticSeverity = {
+    Error: 0,
+    Warning: 1,
+    Information: 2,
+    Hint: 3
+};
+
+export const ConfigurationTarget = {
+    Global: 1,
+    Workspace: 2,
+    WorkspaceFolder: 3
+};
+
+// より良いテストカバレッジのためにモックを拡張
+export const showDockerNotInstalledError = sinon.stub();
+export const showDockerPermissionError = sinon.stub();
+export const inputGitHubPAT = sinon.stub().resolves('test-github-token');
+export const selectParentDirectory = sinon.stub().resolves(Uri.file('/test/project-directory'));
+export const validateInputForInputBox = sinon.stub().returns(null); 

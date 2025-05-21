@@ -1,7 +1,7 @@
 import * as assert from 'assert';
 import * as sinon from 'sinon';
 import { loadExtensionModule } from '../../util/moduleloader';
-import vscodeStub from '../../mock/vscode.mock';
+import * as vscodeMock from '../../mock/vscode.mock';
 
 describe('Extension アクティベーションテスト', () => {
     let extensionModule: any;
@@ -9,13 +9,17 @@ describe('Extension アクティベーションテスト', () => {
     let fsMock: any;
     let childProcessMock: any;
     let commandStubs: any = {};
+    // 各ヘルパーモジュールのモック
+    let uiHelpersMock: any;
+    let fsHelpersMock: any;
+    let dockerHelpersMock: any;
 
     beforeEach(() => {
         // コマンド登録前にスタブをリセットする
         sinon.restore();
         
         // VSCode commands APIの事前設定
-        vscodeStub.commands.registerCommand = sinon.stub().callsFake((commandId, callback) => {
+        vscodeMock.commands.registerCommand = sinon.stub().callsFake((commandId, callback) => {
             // コマンドIDをキーにしてコールバック関数を保存
             commandStubs[commandId] = callback;
             return { dispose: () => {} };
@@ -24,14 +28,17 @@ describe('Extension アクティベーションテスト', () => {
         // VSCode拡張コンテキストのモックを作成
         mockContext = {
             subscriptions: [],
-            extensionPath: '/test/extension'
+            extensionPath: '/test/extension',
+            extensionUri: vscodeMock.Uri.file('/test/extension'),
+            globalStorageUri: vscodeMock.Uri.file('/test/extension/globalStorage')
         };
         
         // ファイルシステムのモック作成
         fsMock = {
             existsSync: sinon.stub().returns(true),
-            readFileSync: sinon.stub().returns(Buffer.from('test content')),
-            writeFileSync: sinon.stub()
+            readFileSync: sinon.stub().returns(Buffer.from('{"parentDirPath":"/test/project"}')),
+            writeFileSync: sinon.stub(),
+            mkdirSync: sinon.stub()
         };
 
         // 子プロセスのモック作成
@@ -40,10 +47,48 @@ describe('Extension アクティベーションテスト', () => {
             execSync: sinon.stub().returns(Buffer.from('Success'))
         };
         
+        // UI Helpersのモック作成
+        uiHelpersMock = {
+            showDockerNotInstalledError: sinon.stub(),
+            showDockerPermissionError: sinon.stub(),
+            inputGitHubPAT: sinon.stub().resolves('test-github-pat'),
+            selectParentDirectory: sinon.stub().resolves(vscodeMock.Uri.file('/test/project'))
+        };
+        
+        // FS Helpersのモック作成
+        fsHelpersMock = {
+            ensureDirectory: sinon.stub(),
+            validateParentDirectory: sinon.stub().resolves(true),
+            setupFolderPermissions: sinon.stub().resolves(true),
+            copyFolderRecursiveSync: sinon.stub()
+        };
+        
+        // Docker Helpersのモック作成
+        dockerHelpersMock = {
+            DOCKER_CONFIG: {
+                DOCKER_IMAGE: 'test-image:latest',
+                CONTAINER_NAME_FILTERS: ['test-container'],
+                AVAILABLE_IMAGES: [
+                    { label: 'Light Environment (Recommended)', value: 'hubioinfows/lite_env:latest' },
+                    { label: 'Full Environment', value: 'hubioinfows/full_env:latest' }
+                ]
+            },
+            preflightChecks: sinon.stub().resolves(true),
+            pullDockerImage: sinon.stub().resolves(true),
+            removeExistingContainers: sinon.stub().resolves(true),
+            isDockerInstalled: sinon.stub().resolves(true),
+            checkDockerPermissions: sinon.stub().resolves(true),
+            openFolderInContainer: sinon.stub().resolves(),
+            executeDockerCommand: sinon.stub().resolves('test-output')
+        };
+        
         // proxyquireを使ってモジュールをロード
         extensionModule = loadExtensionModule({
             'fs': fsMock,
-            'child_process': childProcessMock
+            'child_process': childProcessMock,
+            './ui-helpers': uiHelpersMock,
+            './fs-helpers': fsHelpersMock,
+            './docker-helpers': dockerHelpersMock
         });
         
         // エラーハンドラのスタブ (存在しないハンドラを呼び出さないようにする)
@@ -60,11 +105,12 @@ describe('Extension アクティベーションテスト', () => {
         extensionModule.activate(mockContext);
         
         // コマンドが登録されたことを確認
-        assert.ok(vscodeStub.commands.registerCommand.calledWith('bioinfo-launcher.start-launcher'), 'bioinfo-launcher.start-launcherコマンドが登録される');
-        assert.ok(vscodeStub.commands.registerCommand.calledWith('bioinfo-launcher.reset-config'), 'bioinfo-launcher.reset-configコマンドが登録される');
+        assert.ok(vscodeMock.commands.registerCommand.calledWith('bioinfo-launcher.start-launcher'), 'bioinfo-launcher.start-launcherコマンドが登録される');
+        assert.ok(vscodeMock.commands.registerCommand.calledWith('bioinfo-launcher.reset-config'), 'bioinfo-launcher.reset-configコマンドが登録される');
+        assert.ok(vscodeMock.commands.registerCommand.calledWith('bioinfo-launcher.config-container'), 'bioinfo-launcher.config-containerコマンドが登録される');
         
         // サブスクリプションに追加されたことを確認
-        assert.strictEqual(mockContext.subscriptions.length, 2, '2つのコマンドがサブスクリプションに追加される');
+        assert.strictEqual(mockContext.subscriptions.length, 3, '3つのコマンドがサブスクリプションに追加される');
     });
 
     it('サブスクリプションにコマンドが追加されること', () => {
@@ -72,7 +118,7 @@ describe('Extension アクティベーションテスト', () => {
         extensionModule.activate(mockContext);
         
         // サブスクリプションにコマンドが追加されていることを確認
-        assert.strictEqual(mockContext.subscriptions.length, 2, '2つのコマンドがサブスクリプションに追加される');
+        assert.strictEqual(mockContext.subscriptions.length, 3, '3つのコマンドがサブスクリプションに追加される');
     });
 
     it('設定ファイルが存在しない場合に作成されること', () => {
@@ -89,7 +135,7 @@ describe('Extension アクティベーションテスト', () => {
 
     it('エラー発生時にエラーハンドラが呼ばれること', () => {
         // エラーを発生させるようにモック
-        vscodeStub.commands.registerCommand.throws(new Error('テストエラー'));
+        vscodeMock.commands.registerCommand.throws(new Error('テストエラー'));
         
         // エラーハンドラが正しく動作するかテスト
         try {

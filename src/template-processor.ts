@@ -34,13 +34,19 @@ export class TemplateProcessor {
   public replaceVariables(content: string, variables: Record<string, string>): string {
     let result = content;
     
+    console.log(`[DEBUG] TemplateProcessor.replaceVariables: 変数置換開始`);
+    console.log(`[DEBUG] テンプレート内容の一部: ${content.substring(0, 100)}...`);
+    
     // 全ての変数について処理
     for (const [key, value] of Object.entries(variables)) {
       // {{KEY}} 形式のプレースホルダーを置換
       const placeholder = `{{${key}}}`;
+      const beforeReplace = result.includes(placeholder);
       result = result.replace(new RegExp(placeholder, 'g'), value);
+      console.log(`[DEBUG] 変数置換: ${key}=${value}, プレースホルダー存在=${beforeReplace}`);
     }
     
+    console.log(`[DEBUG] 置換後内容の一部: ${result.substring(0, 100)}...`);
     return result;
   }
   

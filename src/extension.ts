@@ -1,23 +1,41 @@
 import * as vscode from 'vscode';
-import { chmod } from 'node:fs';
+// chmod は node:fs から直接インポートできないため、fs.chmodSync を使用する想定。一旦コメントアウト
+// import { chmod } from 'node:fs'; 
 import * as fs from 'fs';
 import * as path from 'path';
+import * as os from 'os';
 import { exec } from 'child_process';
 import { promisify } from 'util';
-import * as os from 'os';
 import {
     parseErrorMessage, isDockerError, handleDockerError,
-    validateInput, handleFileSystemError
+    handleFileSystemError
 } from './error-handlers';
 import { TemplateProcessor } from './template-processor';
+import { 
+    showDockerNotInstalledError, 
+    showDockerPermissionError,
+    inputGitHubPAT,
+    selectParentDirectory,
+    validateInputForInputBox // ui-helpersから新しい名前でインポート
+} from './ui-helpers';
+import {
+    ensureDirectory,
+    validateParentDirectory as fsValidateParentDirectory,
+    setupFolderPermissions as fsSetupFolderPermissions,
+    copyFolderRecursiveSync
+} from './fs-helpers';
+import {
+    DOCKER_CONFIG,
+    preflightChecks as dockerPreflightChecks,
+    pullDockerImage as dockerPullImage,
+    removeExistingContainers as dockerRemoveContainers,
+    isDockerInstalled as dockerIsInstalled,
+    checkDockerPermissions as dockerCheckPermissions,
+    openFolderInContainer as dockerOpenInContainer,
+    executeDockerCommand as dockerExecuteCommand
+} from './docker-helpers';
 
 const execPromise = promisify(exec);
-
-// 設定関連の定数
-export const CONFIG = {
-  DOCKER_IMAGE: 'hubioinfows/base_env:latest',
-  CONTAINER_NAME_FILTERS: ['bioinfo-launcher']
-};
 
 /**
  * エクステンションアクティベーション時の処理
@@ -32,12 +50,14 @@ export function activate(context: vscode.ExtensionContext) {
                 return;
             }
             const settings = JSON.parse(fs.readFileSync(settingfilePath, 'utf8'));
-            
+            const dockerImageToUse = settings.containerImage || DOCKER_CONFIG.DOCKER_IMAGE;
+
             let containerDirPath: string | undefined;
 
             // 親ディレクトリのパスが設定されていない、または無効な場合は新たに選択
-            if (!settings.parentDirPath || !await validateParentDirectory(settings.parentDirPath)) {
-                containerDirPath = await setup(context, settings, settingfilePath);
+            if (!settings.parentDirPath || !await fsValidateParentDirectory(settings.parentDirPath)) {
+                // inputGitHubPAT内でvalidateInputForInputBoxが使われる
+                containerDirPath = await setup(context, settings, settingfilePath, dockerImageToUse);
                 if (!containerDirPath) {
                     return;
                 }
@@ -48,7 +68,7 @@ export function activate(context: vscode.ExtensionContext) {
             }
             
            // コンテナディレクトリをVSCodeで開く
-            openFolderInContainer(containerDirPath);
+            dockerOpenInContainer(containerDirPath);
         } catch (error) {
             const errorMessage = parseErrorMessage(error);
             if (isDockerError(error)) {
@@ -67,20 +87,22 @@ export function activate(context: vscode.ExtensionContext) {
                 return;
             }
             const settings = JSON.parse(fs.readFileSync(settingfilePath, 'utf8'));
+            const dockerImageToUse = settings.containerImage || DOCKER_CONFIG.DOCKER_IMAGE;
             
             let containerDirPath: string | undefined;
 
             // 親ディレクトリのパスが設定されていない、または無効な場合は新たに選択
-            containerDirPath = await setup(context, settings, settingfilePath);
+            // inputGitHubPAT内でvalidateInputForInputBoxが使われる
+            containerDirPath = await setup(context, settings, settingfilePath, dockerImageToUse);
             if (!containerDirPath) {
                 return;
             }
             
             // コンテナの削除
-            await removeExistingContainers(CONFIG.CONTAINER_NAME_FILTERS);
+            await dockerRemoveContainers(DOCKER_CONFIG.CONTAINER_NAME_FILTERS);
 
             // コンテナディレクトリをVSCodeで開く
-            openFolderInContainer(containerDirPath);
+            dockerOpenInContainer(containerDirPath);
         } catch (error) {
             const errorMessage = parseErrorMessage(error);
             if (isDockerError(error)) {
@@ -91,58 +113,154 @@ export function activate(context: vscode.ExtensionContext) {
         }
     });
 
+    let configContainerCommand = vscode.commands.registerCommand('bioinfo-launcher.config-container', async () => {
+        try {
+            const extensionStoragePath = context.globalStorageUri.fsPath;
+            const settingfilePath = path.join(extensionStoragePath, "settings.json");
+            
+            // settings.jsonの存在確認
+            if (!fs.existsSync(settingfilePath)) {
+                fs.mkdirSync(extensionStoragePath, { recursive: true });
+                fs.writeFileSync(settingfilePath, JSON.stringify({ containerImage: DOCKER_CONFIG.DOCKER_IMAGE }));
+            }
+            
+            // 現在の設定を読み込む
+            const settings = JSON.parse(fs.readFileSync(settingfilePath, 'utf8'));
+            
+            // 利用可能なイメージのリストを表示
+            const selectedImage = await vscode.window.showQuickPick(
+                DOCKER_CONFIG.AVAILABLE_IMAGES.map(img => ({
+                    label: img.label,
+                    description: img.value,
+                    value: img.value
+                })),
+                {
+                    placeHolder: '使用するコンテナイメージを選択してください',
+                    title: 'BioInfoLauncher - コンテナイメージ設定'
+                }
+            );
+            
+            if (selectedImage) {
+                // 選択されたイメージを設定に保存
+                settings.containerImage = selectedImage.value;
+                fs.writeFileSync(settingfilePath, JSON.stringify(settings, null, 2));
+                
+                vscode.window.showInformationMessage(`[bioinfo-launcher] コンテナイメージを "${selectedImage.label}" (${selectedImage.value}) に設定しました`);
+                
+                // 親ディレクトリが設定されている場合は、既存のdocker-compose.ymlを更新
+                if (settings.parentDirPath && fs.existsSync(settings.parentDirPath)) {
+                    const containerDirPath = path.join(settings.parentDirPath, "container");
+                    const devcontainerDirPath = path.join(containerDirPath, ".devcontainer");
+                    const dockerComposeFilePath = path.join(devcontainerDirPath, "docker-compose.yml");
+                    
+                    if (fs.existsSync(dockerComposeFilePath)) {
+                        try {
+                            // 既存のdocker-compose.ymlを読み込む
+                            let dockerComposeContent = fs.readFileSync(dockerComposeFilePath, 'utf8');
+                            
+                            // 現在のGITHUB_PATの値を取得
+                            const githubPatRegex = /GITHUB_PAT=([^\s\r\n"']+)/;
+                            const githubPatLine = dockerComposeContent.split('\n').find(line => line.includes('GITHUB_PAT='));
+                            let githubPat = 'YOUR_GITHUB_PAT';
+
+                            if (githubPatLine) {
+                                const match = githubPatLine.match(githubPatRegex);
+                                if (match && match[1]) {
+                                    githubPat = match[1];
+                                }
+                                console.log(`GITHUB_PAT行: "${githubPatLine}", 抽出した値: "${githubPat}"`);
+                            } else {
+                                console.log('GITHUB_PAT行が見つかりませんでした');
+                            }
+                            
+                            // テンプレートプロセッサを使用してdocker-compose.ymlを更新
+                            const templateProcessor = new TemplateProcessor();
+                            const templatePath = path.join(context.extensionUri.fsPath, 'resources', 'templates', 'container_template', '.devcontainer_template', 'docker-compose.yml.template');
+                            
+                            if (fs.existsSync(templatePath)) {
+                                const templateContent = fs.readFileSync(templatePath, 'utf8');
+                                const updatedContent = templateProcessor.replaceVariables(templateContent, {
+                                    DOCKER_IMAGE: selectedImage.value,
+                                    GITHUB_PAT: githubPat
+                                });
+                                
+                                fs.writeFileSync(dockerComposeFilePath, updatedContent, 'utf8');
+                                vscode.window.showInformationMessage(`[bioinfo-launcher] docker-compose.ymlを更新しました`);
+
+                                // 既存コンテナの確認と再作成の提案
+                                const decision = await vscode.window.showInformationMessage(
+                                    'コンテナイメージが変更されました。既存のコンテナを削除し、次回起動時に新しいイメージで再作成しますか？',
+                                    { modal: true }, 
+                                    'はい', 'いいえ'
+                                );
+
+                                if (decision === 'はい') {
+                                    await dockerRemoveContainers(DOCKER_CONFIG.CONTAINER_NAME_FILTERS);
+                                    vscode.window.showInformationMessage('[bioinfo-launcher] 既存のコンテナを削除しました。次回 start-launcher 実行時に新しいイメージでコンテナが作成されます。');
+                                } else {
+                                    vscode.window.showInformationMessage('[bioinfo-launcher] イメージ設定は更新されました。既存のコンテナはそのままです。次回 start-launcher 実行時にVSCodeが再ビルドを提案する場合があります。');
+                                }
+                            } else {
+                                vscode.window.showWarningMessage(`[bioinfo-launcher] テンプレートファイルが見つかりません: ${templatePath}`);
+                            }
+                        } catch (err) {
+                            vscode.window.showWarningMessage(`[bioinfo-launcher] docker-compose.ymlの更新に失敗しました: ${parseErrorMessage(err)}`);
+                        }
+                    }
+                }
+            }
+        } catch (error) {
+            const errorMessage = parseErrorMessage(error);
+            vscode.window.showErrorMessage(`[bioinfo-launcher] エラー: ${errorMessage}`);
+        }
+    });
+
     context.subscriptions.push(startLauncherCommand);
     context.subscriptions.push(resetConfigCommand);
+    context.subscriptions.push(configContainerCommand);
 }
 
 /**
- * ディレクトリの存在を確認し、なければ作成する
- * @param dirPath 作成するディレクトリのパス
+ * 事前準備を行う
+ * @returns 成功した場合はsettings.jsonのパス、失敗した場合はundefined
  */
-function ensureDirectory(dirPath: string): void {
-    if (!fs.existsSync(dirPath)) {
-        fs.mkdirSync(dirPath, { recursive: true ,  mode: 0o777 });
-    }
-}
+export async function preparation(context: vscode.ExtensionContext): Promise<string | undefined> {
+    try {
+        // 事前チェック
+        if (!await dockerPreflightChecks()) {
+            return;
+        }
+        
+        const extensionStoragePath = context.globalStorageUri.fsPath;
+        const settingfilePath = path.join(extensionStoragePath, "settings.json");
+        // settings.jsonの存在確認
+        if (!fs.existsSync(settingfilePath)) {
+            // settings.jsonが存在しない場合は作成
+            fs.mkdirSync(extensionStoragePath, { recursive: true });
+            fs.writeFileSync(settingfilePath, JSON.stringify({ containerImage: DOCKER_CONFIG.DOCKER_IMAGE }));
+        } else {
+            // settings.jsonが存在する場合は、コンテナイメージ設定を読み込む
+            const settings = JSON.parse(fs.readFileSync(settingfilePath, 'utf8'));
+            // containerImageが設定されていない場合はデフォルト値を設定
+            if (!settings.containerImage) {
+                settings.containerImage = DOCKER_CONFIG.DOCKER_IMAGE;
+                fs.writeFileSync(settingfilePath, JSON.stringify(settings, null, 2));
+            }
+        }
+        
+        // DockerイメージのPull
+        const settings = JSON.parse(fs.readFileSync(settingfilePath, 'utf8'));
+        const dockerImage = settings.containerImage || DOCKER_CONFIG.DOCKER_IMAGE;
+        if (!await dockerPullImage(dockerImage)) {
+            return;
+        }
 
-/**
- * 親ディレクトリを選択する
- * @returns 選択された親ディレクトリのUri、キャンセルされた場合はundefined
- */
-async function selectParentDirectory(): Promise<vscode.Uri | undefined> {
-    const parentDirUri = await vscode.window.showOpenDialog({
-        canSelectFolders: true,
-        canSelectMany: false,
-        openLabel: "開発環境の親ディレクトリを選択",
-        title: "開発環境を作成する親ディレクトリを選択してください"
-    });
-    
-    if (!parentDirUri || parentDirUri.length === 0) {
-        vscode.window.showErrorMessage("[bioinfo-launcher] 親ディレクトリが選択されていません。");
+        return settingfilePath;
+    } catch (error) {
+        const errorMessage = parseErrorMessage(error);
+        vscode.window.showErrorMessage(`[bioinfo-launcher] エラー: ${errorMessage}`);
         return undefined;
     }
-    
-    return parentDirUri[0];
-}
-
-/**
- * GitHub Personal Access Tokenを入力する
- * @returns 入力されたGitHub PAT、キャンセルされた場合はundefined
- */
-async function inputGitHubPAT(): Promise<string | undefined> {
-    const githubPat = await vscode.window.showInputBox({
-        prompt: "GitHub Personal Access Tokenを入力してください",
-        ignoreFocusOut: true,
-        password: true,
-        validateInput: validateInput
-    });
-    
-    if (!githubPat) {
-        vscode.window.showErrorMessage("[bioinfo-launcher] GitHub PATが必要です。");
-        return undefined;
-    }
-    
-    return githubPat;
 }
 
 /**
@@ -171,39 +289,6 @@ async function validateParentDirectory(parentDirPath: string): Promise<boolean> 
 }
 
 /**
- * 事前準備を行う
- * @returns 成功した場合はsettings.jsonのパス、失敗した場合はundefined
- */
-export async function preparation(context: vscode.ExtensionContext): Promise<string | undefined> {
-    try {
-        // 事前チェック
-        if (!await preflightChecks()) {
-            return;
-        }
-        
-        // DockerイメージのPull
-        if (!await pullDockerImage(CONFIG.DOCKER_IMAGE)) {
-            return;
-        }
-
-        const extensionStoragePath = context.globalStorageUri.fsPath;
-        const settingfilePath = path.join(extensionStoragePath, "settings.json");
-        // settings.jsonの存在確認
-        if (!fs.existsSync(settingfilePath)) {
-            // settings.jsonが存在しない場合は作成
-            fs.mkdirSync(extensionStoragePath, { recursive: true });
-            fs.writeFileSync(settingfilePath, JSON.stringify({}));
-        }
-
-        return settingfilePath;
-    } catch (error) {
-        const errorMessage = parseErrorMessage(error);
-        vscode.window.showErrorMessage(`[bioinfo-launcher] エラー: ${errorMessage}`);
-        return undefined;
-    }
-}
-
-/**
  * 事前チェック（Docker、権限）
  * @returns 全てのチェックが通った場合はtrue
  */
@@ -211,13 +296,13 @@ export async function preflightChecks(): Promise<boolean> {
     // Dockerがインストールされているか確認
     if (!await isDockerInstalled()) {
         // Docker未インストールの場合、インストールを提案
-        showDockerNotInstalledError();
+        showDockerNotInstalledError(); // ui-helpersからインポート
         return false;
     }
 
     // Dockerの権限を確認
     if (!await checkDockerPermissions()) {
-        showDockerPermissionError();
+        showDockerPermissionError(); // ui-helpersからインポート
         return false;
     }
     
@@ -267,17 +352,7 @@ export async function isDockerInstalled(): Promise<boolean> {
     }
 }
 
-// Dockerがインストールされていない場合のエラーメッセージを表示
-export function showDockerNotInstalledError() {
-    const message = '[bioinfo-launcher] Dockerがインストールされていません。この拡張機能を使用する前にDockerをインストールしてください。';
-    const installButton = 'インストールガイド';
-    
-    vscode.window.showErrorMessage(message, installButton).then(selection => {
-        if (selection === installButton) {
-            vscode.env.openExternal(vscode.Uri.parse('https://docs.docker.com/get-docker/'));
-        }
-    });
-}
+// showDockerNotInstalledError は ui-helpers.ts に移動
 
 // Dockerの権限を確認する関数
 export async function checkDockerPermissions(): Promise<boolean> {
@@ -295,26 +370,7 @@ export async function checkDockerPermissions(): Promise<boolean> {
     }
 }
 
-// Dockerの権限エラーの場合のメッセージを表示
-export function showDockerPermissionError() {
-    const message = '[bioinfo-launcher] Dockerの実行権限がありません。';
-    const helpButton = '対処方法を確認';
-    
-    let helpMessage = '';
-    if (os.platform() === 'linux') {
-        helpMessage = 'ユーザーをdockerグループに追加してください: sudo usermod -aG docker $USER\nその後、ログアウトして再度ログインしてください。';
-    } else if (os.platform() === 'darwin') {
-        helpMessage = 'macOSでDockerの権限エラーが発生した場合は、Docker Desktopを再起動してみてください。';
-    } else {
-        helpMessage = 'Dockerの実行権限を確認してください。管理者権限で実行するか、適切なユーザー権限を設定してください。';
-    }
-    
-    vscode.window.showErrorMessage(message, helpButton).then(selection => {
-        if (selection === helpButton) {
-            vscode.window.showInformationMessage(helpMessage);
-        }
-    });
-}
+// showDockerPermissionError は ui-helpers.ts に移動
 
 // This method is called when your extension is deactivated
 export function deactivate() {}
@@ -330,7 +386,7 @@ export function getResourceUri(context: vscode.ExtensionContext, relativePath: s
 }
 
 // 全てのセットアップを行う関数
-export async function setup(context: vscode.ExtensionContext, settings: any ,settingfilePath: string): Promise<string|undefined> {
+export async function setup(context: vscode.ExtensionContext, settings: any ,settingfilePath: string, dockerImageFromSettings?: string): Promise<string|undefined> {
     try {
         // 親ディレクトリの選択
         const parentDirUri = await selectParentDirectory();
@@ -369,7 +425,8 @@ export async function setup(context: vscode.ExtensionContext, settings: any ,set
             {
                 projectFolder: projectsDirPath,
                 cacheFolder: cacheDirPath,
-                githubPat
+                githubPat,
+                dockerImage: dockerImageFromSettings || DOCKER_CONFIG.DOCKER_IMAGE
             }
         );
         
@@ -402,8 +459,7 @@ export async function setupDevContainer(context: vscode.ExtensionContext, target
             fs.mkdirSync(targetPath, { recursive: true ,  mode: 0o777 });
         }
         
-        // コンテナテンプレートディレクトリのパスを取得
-        const containerTemplateUri = getResourceUri(context, 'templates/container_template');
+        // テンプレートディレクトリのパスを取得
         const devcontainerTemplateUri = getResourceUri(context, 'templates/container_template/.devcontainer_template');
         
         // 変数定義（必要に応じて）
@@ -428,45 +484,28 @@ export async function setupDevContainer(context: vscode.ExtensionContext, target
     }
 }
 
-// コンテナでフォルダを開く関数
-export async function openFolderInContainer(folderPath: string) {
-    try {
-        // 直接devcontainerでフォルダを開く
-        await vscode.commands.executeCommand(
-            "remote-containers.openFolder", 
-            vscode.Uri.file(folderPath)
-        );
-        
-        vscode.window.showInformationMessage("[bioinfo-launcher] コンテナで開発環境を起動しました");
-    } catch (error) {
-        vscode.window.showErrorMessage(`[bioinfo-launcher] コンテナでフォルダを開くことができませんでした: ${parseErrorMessage(error)}`);
-    }
-}
+// openFolderInContainer は docker-helpers.ts に移動
 
 // Docker Composeファイルを生成する関数
-export async function generateDockerCompose(context: vscode.ExtensionContext, dockercomposeFilePath: string, config: {projectFolder: string, cacheFolder: string, githubPat: string}): Promise<boolean> {
+export async function generateDockerCompose(context: vscode.ExtensionContext, dockercomposeFilePath: string, config: {projectFolder: string, cacheFolder: string, githubPat: string, dockerImage?: string}): Promise<boolean> {
     try {
         // TemplateProcessorのインスタンスを作成
         const templateProcessor = new TemplateProcessor();
         
         // テンプレートディレクトリのパスを取得
-        const containerTemplateUri = getResourceUri(context, 'templates/container_template');
         const devcontainerTemplateUri = getResourceUri(context, 'templates/container_template/.devcontainer_template');
-        // const envTemplateUri = getResourceUri(context, 'templates/.env.template');
         
         // ファイルアクセス権の設定
-        if (!await setupFolderPermissions(config.projectFolder, config.cacheFolder)) {
+        if (!await fsSetupFolderPermissions(config.projectFolder, config.cacheFolder)) {
             return false;
         }
         
-        // 変数定義
-        // const dockerComposeVariables: Record<string, string> = {
-            // PROJECT_FOLDER: config.projectFolder,
-            // CACHE_FOLDER: config.cacheFolder
-        // };
         const variables: Record<string, string> = {
             GITHUB_PAT: config.githubPat,
+            DOCKER_IMAGE: config.dockerImage || DOCKER_CONFIG.DOCKER_IMAGE
         };
+        
+        console.log(`[DEBUG] generateDockerCompose: GITHUB_PAT=${config.githubPat}, DOCKER_IMAGE=${variables.DOCKER_IMAGE}`);
         
         // docker-compose.yml.templateを処理
         try {
@@ -477,14 +516,18 @@ export async function generateDockerCompose(context: vscode.ExtensionContext, do
                 variables
             );
             
-            // 共通の.envファイルを処理
-            // if (fs.existsSync(envTemplateUri.fsPath)) {
-                // const envContent = fs.readFileSync(envTemplateUri.fsPath, 'utf8');
-                // const processedEnvContent = templateProcessor.replaceVariables(envContent, envVariables);
-                // 親ディレクトリ（containerディレクトリの親）に.envファイルを配置
-                // const grandParentDirPath = path.dirname(path.dirname(path.dirname(dockercomposeFilePath)));
-                // fs.writeFileSync(path.join(grandParentDirPath, '.env'), processedEnvContent, 'utf8');
-            // }
+            // 生成されたファイルの内容を確認
+            if (fs.existsSync(dockercomposeFilePath)) {
+                const generatedContent = fs.readFileSync(dockercomposeFilePath, 'utf8');
+                console.log(`[DEBUG] 生成されたdocker-compose.ymlの内容:`);
+                console.log(generatedContent);
+                
+                // GITHUB_PATの値が正しく設定されているか確認
+                const patLine = generatedContent.split('\n').find(line => line.includes('GITHUB_PAT='));
+                console.log(`[DEBUG] GITHUB_PAT行: ${patLine || 'not found'}`);
+            } else {
+                console.log(`[DEBUG] docker-compose.ymlファイルが生成されませんでした: ${dockercomposeFilePath}`);
+            }
             
             vscode.window.showInformationMessage("[bioinfo-launcher] Docker Compose設定を生成しました");
             return true;
@@ -530,47 +573,8 @@ export async function setupProjectTemplate(context: vscode.ExtensionContext, pro
     }
 }
 
-// Docker Compose設定情報を収集する関数は不要になったので削除
-// export async function collectDockerComposeConfig(): Promise<{projectFolder: string, cacheFolder: string, githubPat: string} | null> {
-//    ... 削除 ...
-// }
-
-// フォルダのアクセス権を設定する関数
-export async function setupFolderPermissions(projectFolder: string, cacheFolder: string): Promise<boolean> {
-    try {
-        /* await vscode.commands.executeCommand("workbench.action.terminal.new");
-        const terminal = vscode.window.activeTerminal;
-        terminal?.sendText(`chmod 777 "${projectFolder}"`);
-        terminal?.sendText(`chmod 777 "${cacheFolder}"`); */
-        await fs.chmodSync(projectFolder, 0o777);
-        await fs.chmodSync(cacheFolder, 0o777);
-        return true;
-    } catch (error) {
-        vscode.window.showErrorMessage(`[bioinfo-launcher] 権限エラー: フォルダのアクセス権を変更できません。${parseErrorMessage(error)}`);
-        return false;
-    }
-}
-
-// フォルダを再帰的にコピーする関数
-export function copyFolderRecursiveSync(source: string, target: string, fsModule: any = fs) {
-    try {
-        if (!fsModule.existsSync(source)) {return;}
-        if (!fsModule.existsSync(target)) {fsModule.mkdirSync(target, { recursive: true ,  mode: 0o777 });}
-
-        const files = fsModule.readdirSync(source);
-        for (const file of files) {
-            const srcPath = path.join(source, file);
-            const destPath = path.join(target, file);
-            if (fsModule.lstatSync(srcPath).isDirectory()) {
-                copyFolderRecursiveSync(srcPath, destPath, fsModule);
-            } else {
-                fsModule.copyFileSync(srcPath, destPath);
-            }
-        }
-    } catch (error) {
-        handleFileSystemError(error);
-    }
-}
+// setupFolderPermissions は fs-helpers.ts に移動
+// copyFolderRecursiveSync は fs-helpers.ts に移動
 
 /**
  * Docker Composeファイルを生成する
@@ -588,7 +592,7 @@ export function generateDockerComposeFiles(config: {projectFolder: string, cache
         const dockerComposeContent = `version: '3'
 services:
   workspace:
-    image: ${CONFIG.DOCKER_IMAGE}
+    image: ${DOCKER_CONFIG.DOCKER_IMAGE}
     volumes:
       - "${config.projectFolder}:/workspace"
       - "${config.cacheFolder}:/cache"
@@ -611,7 +615,7 @@ services:
 export async function startLauncher(): Promise<void> {
     try {
         // 事前チェック
-        if (!await preflightChecks()) {
+        if (!await dockerPreflightChecks()) {
             return;
         }
         
@@ -630,8 +634,25 @@ export async function startLauncher(): Promise<void> {
         // テスト用コンテキスト
         const context = vscode.extensions.getExtension('hu-bioinfo-workshop.bioinfo-launcher')?.extensionUri || { fsPath: path.join(os.tmpdir(), 'bioinfo-launcher-extension') };
         
+        // 設定の読み込み
+        const extensionStoragePath = path.join(os.homedir(), '.vscode', 'globalStorage', 'hu-bioinfo-workshop.bioinfo-launcher');
+        const settingfilePath = path.join(extensionStoragePath, "settings.json");
+        let dockerImage = DOCKER_CONFIG.DOCKER_IMAGE;
+        
+        if (fs.existsSync(settingfilePath)) {
+            try {
+                const settings = JSON.parse(fs.readFileSync(settingfilePath, 'utf8'));
+                if (settings.containerImage) {
+                    dockerImage = settings.containerImage;
+                }
+            } catch (err) {
+                // 設定の読み込みに失敗した場合はデフォルト値を使用
+                console.error('設定の読み込みに失敗しました:', err);
+            }
+        }
+        
         // DockerイメージのPull
-        if (!await pullDockerImage(CONFIG.DOCKER_IMAGE)) {
+        if (!await dockerPullImage(dockerImage)) {
             return;
         }
         
@@ -657,7 +678,8 @@ export async function startLauncher(): Promise<void> {
             {
                 projectFolder: projectsDirPath,
                 cacheFolder: cacheDirPath,
-                githubPat
+                githubPat,
+                dockerImage // 選択されたイメージを使用
             }
         );
         
@@ -665,7 +687,7 @@ export async function startLauncher(): Promise<void> {
         await setupProjectTemplate({ extensionUri: context } as any, projectsDirPath);
         
         // コンテナディレクトリをVSCodeで開く
-        openFolderInContainer(containerDirPath);
+        dockerOpenInContainer(containerDirPath);
     } catch (error) {
         const errorMessage = parseErrorMessage(error);
         if (isDockerError(error)) {
@@ -676,24 +698,7 @@ export async function startLauncher(): Promise<void> {
     }
 }
 
-/**
- * Dockerコマンドを実行する
- * @param command 実行するコマンド
- * @returns 成功した場合はコマンドの出力、失敗した場合はnull
- */
-export async function executeDockerCommand(command: string): Promise<string | null> {
-    try {
-        const { stdout } = await execPromise(command);
-        return stdout;
-    } catch (error) {
-        if (isDockerError(error)) {
-            handleDockerError(error);
-        } else {
-            vscode.window.showErrorMessage(`[bioinfo-launcher] コマンド実行エラー: ${parseErrorMessage(error)}`);
-        }
-        return null;
-    }
-}
+// executeDockerCommand は docker-helpers.ts に移動
 
 /**
  * 設定をリセットする
@@ -720,6 +725,30 @@ export async function resetLauncherConfig(): Promise<void> {
         // テスト用コンテキスト
         const context = vscode.extensions.getExtension('hu-bioinfo-workshop.bioinfo-launcher')?.extensionUri || { fsPath: path.join(os.tmpdir(), 'bioinfo-launcher-extension') };
         
+        // 設定の読み込み
+        const extensionStoragePath = path.join(os.homedir(), '.vscode', 'globalStorage', 'hu-bioinfo-workshop.bioinfo-launcher');
+        const settingfilePath = path.join(extensionStoragePath, "settings.json");
+        let dockerImage = DOCKER_CONFIG.DOCKER_IMAGE; // デフォルト値
+        
+        if (fs.existsSync(settingfilePath)) {
+            try {
+                const settings = JSON.parse(fs.readFileSync(settingfilePath, 'utf8'));
+                if (settings.containerImage) {
+                    dockerImage = settings.containerImage;
+                    console.log(`[DEBUG] resetLauncherConfig: settings.jsonから読み込んだdockerImage=${dockerImage}`);
+                }
+            } catch (err) {
+                console.error('設定の読み込みに失敗しました:', err);
+            }
+        } else {
+            console.log(`[DEBUG] resetLauncherConfig: settings.jsonが存在しません: ${settingfilePath}`);
+        }
+        
+        // DockerイメージのPull
+        if (!await dockerPullImage(dockerImage)) {
+            return;
+        }
+        
         // GitHub PATの入力
         const githubPat = await inputGitHubPAT();
         if (!githubPat) {
@@ -734,47 +763,21 @@ export async function resetLauncherConfig(): Promise<void> {
             {
                 projectFolder: projectsDirPath,
                 cacheFolder: cacheDirPath,
-                githubPat
+                githubPat,
+                dockerImage // 選択されたイメージを渡す
             }
         );
         
         // コンテナの削除
-        await removeExistingContainers(CONFIG.CONTAINER_NAME_FILTERS);
+        await dockerRemoveContainers(DOCKER_CONFIG.CONTAINER_NAME_FILTERS);
         
         // コンテナディレクトリをVSCodeで開く
-        openFolderInContainer(containerDirPath);
+        dockerOpenInContainer(containerDirPath);
         
         vscode.window.showInformationMessage("[bioinfo-launcher] 設定をリセットしました。");
     } catch (error) {
         vscode.window.showErrorMessage(`[bioinfo-launcher] 設定のリセットに失敗しました: ${parseErrorMessage(error)}`);
     }
-}
-
-// Dockerがインストールされていない場合のプロンプト表示
-export async function showDockerInstallPrompt(): Promise<boolean> {
-    const message = 'Dockerがインストールされていません。自動的にインストールしますか？';
-    const installButton = 'インストールする';
-    const cancelButton = 'キャンセル';
-    
-    const selection = await vscode.window.showInformationMessage(
-        message, 
-        { modal: true },
-        installButton, 
-        cancelButton
-    );
-    
-    return selection === installButton;
-}
-
-// Dockerインストールの実行
-export async function installDockerWithProgress(): Promise<boolean> {
-    // 元々 dockerInstaller.installDocker() を呼び出していましたが、
-    // docker-installer モジュールが存在しないため、この関数内で直接インストール処理を行うか、
-    // 別の既存関数を呼び出す必要があります。
-    // ここでは、単純に元の呼び出しを削除します。
-    // TODO: Dockerインストール処理をここに実装するか、適切な関数を呼び出す
-    console.log("TODO: Implement Docker installation logic here or call appropriate function.");
-    return false; // 仮にfalseを返します
 }
 
 // Export function for E2E testing
@@ -807,48 +810,40 @@ export async function validateSettings(): Promise<boolean> {
 // 統合テストで使用する関数をここでエクスポート
 export const forTesting = {
   validateSettings,
-  selectParentDirectory,
-  inputGitHubPAT,
-  isDockerInstalled,
-  preflightChecks
+  isDockerInstalled: dockerIsInstalled,
+  preflightChecks: dockerPreflightChecks
 };
 
 // テスト用にエクスポートする関数
 export const EXPORTED_FUNCTIONS = {
     parseErrorMessage,
-    isDockerInstalled,
-    showDockerInstallPrompt,
-    installDockerWithProgress,
-    pullDockerImage,
-    openFolderInContainer,
+    isDockerInstalled: dockerIsInstalled,
+    pullDockerImage: dockerPullImage,
+    openFolderInContainer: dockerOpenInContainer,
     setupDevContainer,
     generateDockerCompose,
-    setupFolderPermissions,
-    validateInput,
-    removeExistingContainers,
+    setupFolderPermissions: fsSetupFolderPermissions,
+    removeExistingContainers: dockerRemoveContainers,
     setupProjectTemplate,
     startLauncher,
     resetLauncherConfig,
-    showDockerNotInstalledError,
-    checkDockerPermissions,
-    showDockerPermissionError,
-    preflightChecks
+    checkDockerPermissions: dockerCheckPermissions,
+    preflightChecks: dockerPreflightChecks
 };
 
 // commonjs用にエクスポート
 module.exports = {
     activate,
+    deactivate,
+    preparation,
+    setup,
     startLauncher,
     resetLauncherConfig,
     setupDevContainer,
     generateDockerCompose,
-    openFolderInContainer,
-    setupFolderPermissions,
-    installDockerWithProgress,
-    validateInput,
-    isDockerInstalled,
-    showDockerNotInstalledError,
-    checkDockerPermissions,
-    showDockerPermissionError,
-    preflightChecks
+    openFolderInContainer: dockerOpenInContainer,
+    setupFolderPermissions: fsSetupFolderPermissions,
+    isDockerInstalled: dockerIsInstalled,
+    checkDockerPermissions: dockerCheckPermissions,
+    preflightChecks: dockerPreflightChecks
 };

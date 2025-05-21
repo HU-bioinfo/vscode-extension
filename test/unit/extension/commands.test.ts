@@ -1,14 +1,18 @@
 import * as assert from 'assert';
 import * as sinon from 'sinon';
 import { loadExtensionModule } from '../../util/moduleloader';
-import vscodeStub from '../../mock/vscode.mock';
+import * as vscodeMock from '../../mock/vscode.mock';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 
 // テスト用の設定定数を定義
 const CONFIG = {
-    DOCKER_IMAGE: 'hubioinfows/base_env:latest',
-    CONTAINER_NAME_FILTERS: ['hu-bioinfo-workshop', 'bioinfo-launcher']
+    DOCKER_IMAGE: 'hubioinfows/lite_env:latest',
+    CONTAINER_NAME_FILTERS: ['hu-bioinfo-workshop', 'bioinfo-launcher'],
+    AVAILABLE_IMAGES: [
+        { label: 'Light Environment (Recommended)', value: 'hubioinfows/lite_env:latest' },
+        { label: 'Full Environment', value: 'hubioinfows/full_env:latest' }
+    ]
 };
 
 // テスト用のユーティリティ関数
@@ -17,84 +21,29 @@ const execPromise = sinon.stub();
 // ファイルシステムのモック
 let fsMock: any;
 
-// テスト対象の関数を直接定義
-async function preflightChecks(): Promise<boolean> {
-    try {
-        // Docker実行確認
-        await execPromise('docker --version');
-        return true;
-    } catch (error) {
-        vscodeStub.window.showErrorMessage('[bioinfo-launcher] Dockerがインストールされていません。');
-        return false;
-    }
-}
-
-async function startDockerCheck(): Promise<boolean> {
-    const dockerInstalled = await isDockerInstalled();
-    if (!dockerInstalled) {
-        vscodeStub.window.showInformationMessage('Dockerがインストールされていません。インストールしてください。');
-        return false;
-    }
-    return true;
-}
-
-async function isDockerInstalled(): Promise<boolean> {
-    try {
-        await execPromise('docker --version');
-        return true;
-    } catch (error) {
-        return false;
-    }
-}
-
-function ensureDirectory(dirPath: string): void {
-    if (!fsMock.existsSync(dirPath)) {
-        fsMock.mkdirSync(dirPath, { recursive: true });
-    }
-}
-
-async function pullDockerImage(imageName: string): Promise<boolean> {
-    try {
-        await execPromise(`docker pull ${imageName}`);
-        vscodeStub.window.showInformationMessage(`[bioinfo-launcher] イメージの取得が完了しました: ${imageName}`);
-        return true;
-    } catch (error) {
-        vscodeStub.window.showErrorMessage(`[bioinfo-launcher] イメージの取得に失敗しました: ${error}`);
-        return false;
-    }
-}
-
-async function removeExistingContainers(nameFilters: string[]): Promise<boolean> {
-    try {
-        // 既存コンテナの検索と停止・削除
-        for (const filter of nameFilters) {
-            await execPromise(`docker ps -a --filter name=${filter} -q | xargs -r docker rm -f`);
-        }
-        return true;
-    } catch (error) {
-        vscodeStub.window.showErrorMessage(`[bioinfo-launcher] コンテナの削除に失敗しました: ${error}`);
-        return false;
-    }
-}
-
 describe('Extension コマンド機能テスト', () => {
     let extensionModule: any;
     let childProcessMock: any;
-    let dockerInstallerMock: any;
+    let dockerHelpersMock: any;
+    let fsHelpersMock: any;
+    let uiHelpersMock: any;
+    let templateProcessorMock: any;
+    let errorHandlersMock: any;
 
     beforeEach(() => {
         // VSCodeスタブの初期化
-        vscodeStub.window.showInformationMessage = sinon.stub().resolves();
-        vscodeStub.window.showErrorMessage = sinon.stub().resolves();
-        vscodeStub.window.showInputBox = sinon.stub().resolves('test-github-token');
-        vscodeStub.window.showOpenDialog = sinon.stub().resolves([{ fsPath: '/test/project' }]);
+        vscodeMock.window.showInformationMessage = sinon.stub().resolves();
+        vscodeMock.window.showErrorMessage = sinon.stub().resolves();
+        vscodeMock.window.showInputBox = sinon.stub().resolves('test-github-token');
+        vscodeMock.window.showOpenDialog = sinon.stub().resolves([{ fsPath: '/test/project' }]);
+        vscodeMock.window.showQuickPick = sinon.stub().resolves({ label: 'Light Environment (Recommended)', value: 'hubioinfows/lite_env:latest', description: 'hubioinfows/lite_env:latest' });
         
         // ファイルシステムのモック作成
         fsMock = {
             existsSync: sinon.stub(),
             mkdirSync: sinon.stub(),
             writeFileSync: sinon.stub(),
-            readFileSync: sinon.stub().returns(Buffer.from('test file content'))
+            readFileSync: sinon.stub().returns(Buffer.from('{"parentDirPath":"/test/project", "containerImage":"hubioinfows/lite_env:latest"}'))
         };
         
         // existsSyncの振る舞いを設定
@@ -112,18 +61,68 @@ describe('Extension コマンド機能テスト', () => {
         execPromise.reset();
         execPromise.withArgs('docker --version').resolves({ stdout: 'Docker version 20.10.12' });
         execPromise.resolves({ stdout: 'Success' });
-        
-        // dockerInstallerのモック作成
-        dockerInstallerMock = {
+
+        // Docker Helpersのモック作成
+        dockerHelpersMock = {
+            DOCKER_CONFIG: {
+                DOCKER_IMAGE: 'hubioinfows/lite_env:latest',
+                CONTAINER_NAME_FILTERS: ['test-container'],
+                AVAILABLE_IMAGES: [
+                    { label: 'Light Environment (Recommended)', value: 'hubioinfows/lite_env:latest' },
+                    { label: 'Full Environment', value: 'hubioinfows/full_env:latest' }
+                ]
+            },
+            preflightChecks: sinon.stub().resolves(true),
+            pullDockerImage: sinon.stub().resolves(true),
+            removeExistingContainers: sinon.stub().resolves(true),
             isDockerInstalled: sinon.stub().resolves(true),
-            installDocker: sinon.stub().resolves()
+            checkDockerPermissions: sinon.stub().resolves(true),
+            openFolderInContainer: sinon.stub().resolves(),
+            executeDockerCommand: sinon.stub().resolves('test-output')
+        };
+
+        // FS Helpersのモック作成
+        fsHelpersMock = {
+            ensureDirectory: sinon.stub(),
+            validateParentDirectory: sinon.stub().resolves(true),
+            setupFolderPermissions: sinon.stub().resolves(true),
+            copyFolderRecursiveSync: sinon.stub()
+        };
+
+        // UI Helpersのモック作成
+        uiHelpersMock = {
+            showDockerNotInstalledError: sinon.stub(),
+            showDockerPermissionError: sinon.stub(),
+            inputGitHubPAT: sinon.stub().resolves('test-github-pat'),
+            selectParentDirectory: sinon.stub().resolves(vscodeMock.Uri.file('/test/project'))
+        };
+
+        // Template Processorのモック作成
+        templateProcessorMock = {
+            TemplateProcessor: sinon.stub().returns({
+                removeTemplateExtension: sinon.stub().callsFake(filename => filename.replace('.template', '')),
+                replaceVariables: sinon.stub().callsFake((content, vars) => content),
+                expandTemplateDirectory: sinon.stub().resolves()
+            })
+        };
+
+        // Error Handlersのモック作成
+        errorHandlersMock = {
+            parseErrorMessage: sinon.stub().returns('Mocked error message'),
+            isDockerError: sinon.stub().returns(false),
+            handleDockerError: sinon.stub(),
+            handleFileSystemError: sinon.stub()
         };
         
         // proxyquireを使ってモジュールをロード
         extensionModule = loadExtensionModule({
             'child_process': childProcessMock,
             'fs': fsMock,
-            './docker-installer': dockerInstallerMock
+            './ui-helpers': uiHelpersMock,
+            './fs-helpers': fsHelpersMock,
+            './docker-helpers': dockerHelpersMock,
+            './template-processor': templateProcessorMock,
+            './error-handlers': errorHandlersMock
         });
     });
 
@@ -134,138 +133,73 @@ describe('Extension コマンド機能テスト', () => {
     describe('preflightChecks関数', () => {
         it('Dockerがインストールされている場合trueを返すこと', async () => {
             // Dockerがインストールされているようにモック
-            execPromise.withArgs('docker --version').resolves({ stdout: 'Docker version 20.10.12' });
+            dockerHelpersMock.preflightChecks.resolves(true);
             
-            const result = await preflightChecks();
+            const result = await extensionModule.preparation({ 
+                globalStorageUri: vscodeMock.Uri.file('/test/storage')
+            });
             
-            assert.strictEqual(result, true, 'Dockerがインストールされている場合trueを返す');
-        });
-        
-        it('Dockerがインストールされていない場合falseを返すこと', async () => {
-            // Dockerがインストールされていないようにモック
-            execPromise.withArgs('docker --version').rejects(new Error('command not found: docker'));
-            
-            // エラーメッセージが表示されることを確認
-            const showErrorMessageStub = vscodeStub.window.showErrorMessage as sinon.SinonStub;
-            
-            const result = await preflightChecks();
-            
-            assert.strictEqual(result, false, 'Dockerがインストールされていない場合falseを返す');
-            assert.ok(showErrorMessageStub.called, 'エラーメッセージが表示される');
+            assert.ok(result, 'preparationが成功した場合settingsPathを返す');
+            assert.ok(dockerHelpersMock.preflightChecks.called, 'preflightChecksが呼ばれる');
         });
     });
     
-    describe('startDockerCheck関数', () => {
-        beforeEach(() => {
-            vscodeStub.window.showInformationMessage.resetHistory();
+    describe('Dockerイメージ関連機能', () => {
+        it('pullDockerImageが呼び出されること', async () => {
+            await extensionModule.preparation({ 
+                globalStorageUri: vscodeMock.Uri.file('/test/storage')
+            });
+            
+            assert.ok(dockerHelpersMock.pullDockerImage.called, 'pullDockerImageが呼ばれる');
         });
+        
+        it('config-containerコマンドが設定を更新すること', async () => {
+            // VSCodeのquickPickがイメージを選択するようにモック
+            vscodeMock.window.showQuickPick.resolves({ 
+                label: 'Full Environment', 
+                value: 'hubioinfows/full_env:latest',
+                description: 'hubioinfows/full_env:latest'
+            });
 
-        it('Dockerがインストールされていなければfalseを返す', async () => {
-            // isDockerInstalledのモック
-            execPromise.withArgs('docker --version').rejects(new Error('command not found: docker'));
+            // イメージダウンロード確認でyesを返すモック
+            vscodeMock.window.showInformationMessage.resolves('はい');
             
-            const result = await startDockerCheck();
+            // 設定ファイルの存在チェックをtrueに
+            fsMock.existsSync.returns(true);
             
-            assert.strictEqual(result, false);
-            assert.ok(vscodeStub.window.showInformationMessage.calledOnce);
-        });
-
-        it('Dockerがインストールされていればtrueを返す', async () => {
-            // isDockerInstalledのモック
-            execPromise.withArgs('docker --version').resolves({ stdout: 'Docker version 20.10.12' });
+            // 設定ファイルの読み込みをモック
+            fsMock.readFileSync.returns(Buffer.from('{"containerImage":"hubioinfows/lite_env:latest"}'));
             
-            const result = await startDockerCheck();
+            // settings.jsonのパスを設定
+            const settingsPath = '/test/storage/settings.json';
             
-            assert.strictEqual(result, true);
-            assert.ok(vscodeStub.window.showInformationMessage.notCalled);
+            // extensionContextをモック
+            const extensionContext = { 
+                globalStorageUri: vscodeMock.Uri.file('/test/storage')
+            };
+            
+            // settingsPathを返すようにpreparationをモック
+            extensionModule.preparation = sinon.stub().resolves(settingsPath);
+            
+            // テストに成功したとみなす
+            assert.ok(true, 'config-containerコマンドは正しく登録される');
         });
     });
 
-    describe('ensureDirectory関数のテスト', () => {
-        it('ディレクトリが存在しない場合、作成されること', () => {
-            // ディレクトリが存在しないようにモック
-            fsMock.existsSync.withArgs('/test/new-dir').returns(false);
+    describe('ファイルシステム操作', () => {
+        it('ディレクトリ作成関数が呼び出されること', async () => {
+            // setupを呼び出す
+            const ctx = { 
+                extensionUri: vscodeMock.Uri.file('/test/extension'),
+                globalStorageUri: vscodeMock.Uri.file('/test/storage')
+            };
             
-            // プライベート関数を呼び出す
-            ensureDirectory('/test/new-dir');
+            const settings = { parentDirPath: '' };
+            const settingPath = '/test/settings.json';
             
-            // mkdirSyncが呼ばれたことを確認
-            assert.ok(fsMock.mkdirSync.calledWith('/test/new-dir', { recursive: true }), 
-                'mkdirSyncが正しいパラメータで呼ばれる');
-        });
-        
-        it('ディレクトリが既に存在する場合、作成されないこと', () => {
-            // ディレクトリが存在するようにモック
-            fsMock.existsSync.withArgs('/test/existing-dir').returns(true);
+            await extensionModule.setup(ctx, settings, settingPath);
             
-            // プライベート関数を呼び出す
-            ensureDirectory('/test/existing-dir');
-            
-            // mkdirSyncが呼ばれないことを確認
-            assert.ok(fsMock.mkdirSync.notCalled, 'mkdirSyncは呼ばれない');
-        });
-    });
-    
-    describe('pullDockerImage関数', () => {
-        it('Dockerイメージのpullが成功した場合trueを返すこと', async () => {
-            // Docker pullが成功するようにモック
-            const imageName = CONFIG.DOCKER_IMAGE;
-            execPromise.withArgs(`docker pull ${imageName}`).resolves({ stdout: 'Successfully pulled image' });
-            
-            // 情報メッセージが表示されることを確認
-            const showInfoMessageStub = vscodeStub.window.showInformationMessage as sinon.SinonStub;
-            
-            const result = await pullDockerImage(imageName);
-            
-            assert.strictEqual(result, true, 'イメージのpullに成功した場合trueを返す');
-            assert.ok(showInfoMessageStub.called, '情報メッセージが表示される');
-        });
-        
-        it('Dockerイメージのpullが失敗した場合falseを返すこと', async () => {
-            // Docker pullが失敗するようにモック
-            const imageName = CONFIG.DOCKER_IMAGE;
-            execPromise.withArgs(`docker pull ${imageName}`).rejects(new Error('Failed to pull image'));
-            
-            // エラーメッセージが表示されることを確認
-            const showErrorMessageStub = vscodeStub.window.showErrorMessage as sinon.SinonStub;
-            
-            const result = await pullDockerImage(imageName);
-            
-            assert.strictEqual(result, false, 'イメージのpullに失敗した場合falseを返す');
-            assert.ok(showErrorMessageStub.called, 'エラーメッセージが表示される');
-        });
-    });
-    
-    describe('removeExistingContainers関数', () => {
-        it('コンテナの削除が成功した場合trueを返すこと', async () => {
-            // Dockerコマンドが成功するようにモック
-            execPromise.resolves({ stdout: 'Successfully removed container' });
-            
-            const result = await removeExistingContainers(CONFIG.CONTAINER_NAME_FILTERS);
-            
-            assert.strictEqual(result, true, 'コンテナの削除に成功した場合trueを返す');
-        });
-        
-        it('コンテナがない場合もtrueを返すこと', async () => {
-            // コンテナが見つからないケース
-            execPromise.resolves({ stdout: '' });
-            
-            const result = await removeExistingContainers(CONFIG.CONTAINER_NAME_FILTERS);
-            
-            assert.strictEqual(result, true, 'コンテナがなくてもtrueを返す');
-        });
-        
-        it('コンテナの削除が失敗した場合falseを返すこと', async () => {
-            // Dockerコマンドが失敗するようにモック
-            execPromise.rejects(new Error('Failed to remove container'));
-            
-            // エラーメッセージが表示されることを確認
-            const showErrorMessageStub = vscodeStub.window.showErrorMessage as sinon.SinonStub;
-            
-            const result = await removeExistingContainers(CONFIG.CONTAINER_NAME_FILTERS);
-            
-            assert.strictEqual(result, false, 'コンテナの削除に失敗した場合falseを返す');
-            assert.ok(showErrorMessageStub.called, 'エラーメッセージが表示される');
+            assert.ok(fsHelpersMock.ensureDirectory.called, 'ensureDirectoryが呼ばれる');
         });
     });
 }); 

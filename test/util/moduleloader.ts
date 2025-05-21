@@ -7,7 +7,7 @@
 
 // proxyquireを正しくインポート
 import proxyquire from 'proxyquire';
-import vscodeStub from '../mock/vscode.mock';
+import * as vscodeMockObject from '../mock/vscode.mock';
 import * as sinon from 'sinon';
 
 /**
@@ -24,17 +24,26 @@ export interface MockObjects {
  * @returns 読み込まれたモジュール
  */
 export function loadModuleWithVSCodeMock(modulePath: string, additionalStubs: Record<string, any> = {}): any {
+    // 環境変数でVSCODE_MOCKが設定されているか確認
+    const isMockMode = process.env.VSCODE_MOCK === '1';
+    console.log(`テストヘルパー: ${isMockMode ? 'モックモード' : '実モード'}`);
+    console.log(`テストモード: ${process.env.NODE_ENV === 'test' ? 'ユニットテスト' : '統合テスト'}`);
+    console.log('');
+
     // vscodeモジュールとその他のスタブを結合
     const stubs = {
-        'vscode': vscodeStub,
+        'vscode': vscodeMockObject,
         ...additionalStubs
     };
     
-    // proxyquireのオプション設定
-    const noCallThru = proxyquire.noCallThru();
-    
-    // モジュールを読み込む
-    return noCallThru(modulePath, stubs);
+    try {
+        // proxyquireのオプション設定とモジュール読み込み
+        const noCallThru = proxyquire.noCallThru();
+        return noCallThru(modulePath, stubs);
+    } catch (error) {
+        console.error(`モジュールのロードに失敗: ${modulePath}`, error);
+        throw error;
+    }
 }
 
 /**
@@ -110,17 +119,6 @@ export function loadErrorHandlersModule(additionalStubs: Record<string, any> = {
 }
 
 /**
- * テスト用にdocker-installer.tsモジュールを読み込みます
- * @param additionalStubs 追加のスタブ（オプション）
- * @returns 読み込まれたdocker-installerモジュール
- */
-export function loadDockerInstallerModule(additionalStubs: Record<string, any> = {}): any {
-    const defaultMocks = getDefaultMocks();
-    const combinedStubs = { ...defaultMocks, ...additionalStubs };
-    return loadModuleWithVSCodeMock('../../src/docker-installer', combinedStubs);
-}
-
-/**
  * テスト用にtemplate-processor.tsモジュールを読み込みます
  * @param additionalStubs 追加のスタブ（オプション）
  * @returns 読み込まれたtemplate-processorモジュール
@@ -141,4 +139,37 @@ export function loadAnyModuleWithMocks(modulePath: string, additionalStubs: Reco
     const defaultMocks = getDefaultMocks();
     const combinedStubs = { ...defaultMocks, ...additionalStubs };
     return loadModuleWithVSCodeMock(modulePath, combinedStubs);
+}
+
+/**
+ * テスト用にui-helpers.tsモジュールを読み込みます
+ * @param additionalStubs 追加のスタブ（オプション）
+ * @returns 読み込まれたui-helpersモジュール
+ */
+export function loadUiHelpersModule(additionalStubs: Record<string, any> = {}): any {
+    const defaultMocks = getDefaultMocks();
+    const combinedStubs = { ...defaultMocks, ...additionalStubs };
+    return loadModuleWithVSCodeMock('../../src/ui-helpers', combinedStubs);
+}
+
+/**
+ * テスト用にfs-helpers.tsモジュールを読み込みます
+ * @param additionalStubs 追加のスタブ（オプション）
+ * @returns 読み込まれたfs-helpersモジュール
+ */
+export function loadFsHelpersModule(additionalStubs: Record<string, any> = {}): any {
+    const defaultMocks = getDefaultMocks();
+    const combinedStubs = { ...defaultMocks, ...additionalStubs };
+    return loadModuleWithVSCodeMock('../../src/fs-helpers', combinedStubs);
+}
+
+/**
+ * テスト用にdocker-helpers.tsモジュールを読み込みます
+ * @param additionalStubs 追加のスタブ（オプション）
+ * @returns 読み込まれたdocker-helpersモジュール
+ */
+export function loadDockerHelpersModule(additionalStubs: Record<string, any> = {}): any {
+    const defaultMocks = getDefaultMocks();
+    const combinedStubs = { ...defaultMocks, ...additionalStubs };
+    return loadModuleWithVSCodeMock('../../src/docker-helpers', combinedStubs);
 } 

@@ -1,14 +1,19 @@
 services:
   container:
-    image: hubioinfows/base_env:latest
-    container_name: bioinfo-launcher-container
+    image: hubioinfows/lite_env:latest
+    build:
+      context: .
+      dockerfile: hu_bioinfo_lite.Dockerfile
+    container_name: dev-hubioinfows-lite-container
     environment:
       - DISABLE_AUTH=true
       - CACHE_DIR=/home/user/cache
       - PROJ_DIR=/home/user/proj
-      - GITHUB_PAT={{GITHUB_PAT}}
+      - GITHUB_PAT=${{GITHUB_PAT}}
     volumes:
       - ../projects:/home/user/proj
       - ../../cache:/home/user/cache
-      - .:/home/user/.devcontainer
+    ports:
+      - 8080:8080
     command: sleep infinity
+    init: true
