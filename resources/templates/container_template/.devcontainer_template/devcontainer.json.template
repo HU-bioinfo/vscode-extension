@@ -1,5 +1,5 @@
 {
-    "name": "dev-hubioinfows-lite-container",
+    "name": "bioinfo-launcher",
     "dockerComposeFile": "./docker-compose.yml",
     "service": "container",
     "workspaceFolder": "/home/user/proj",
