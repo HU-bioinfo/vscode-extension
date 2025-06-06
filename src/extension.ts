@@ -69,6 +69,13 @@ export function activate(context: vscode.ExtensionContext) {
             
            // コンテナディレクトリをVSCodeで開く
             dockerOpenInContainer(containerDirPath);
+            
+            // イメージ更新によるリビルドが行われた場合の通知
+            const imageUpdated = context.globalState.get('imageUpdated', false);
+            if (imageUpdated) {
+                context.globalState.update('imageUpdated', false); // フラグをリセット
+                vscode.window.showInformationMessage('[bioinfo-launcher] 新しいDockerイメージでコンテナが作成されます。初回起動時はビルドに時間がかかる場合があります。');
+            }
         } catch (error) {
             const errorMessage = parseErrorMessage(error);
             if (isDockerError(error)) {
@@ -221,6 +228,73 @@ export function activate(context: vscode.ExtensionContext) {
 }
 
 /**
+ * Dockerイメージの更新を確認する
+ * @param imageName イメージ名
+ * @returns 更新情報 { updated: boolean, localHash?: string, newHash?: string }
+ */
+export async function checkDockerImageUpdate(imageName: string): Promise<{updated: boolean, localHash?: string, newHash?: string}> {
+    try {
+        // ローカルイメージのハッシュを取得
+        let localHash: string | undefined;
+        try {
+            const { stdout: localOutput } = await execPromise(`docker images --format "{{.ID}}" ${imageName}`);
+            localHash = localOutput.trim();
+        } catch (error) {
+            // ローカルイメージが存在しない場合
+            localHash = undefined;
+        }
+
+        // リモートイメージをpull（docker-helpers.tsの進捗付きpull関数を使用）
+        const pullSuccess = await dockerPullImage(imageName);
+        if (!pullSuccess) {
+            throw new Error('イメージのpullに失敗しました');
+        }
+
+        // pull後のローカルイメージのハッシュを取得
+        const { stdout: newOutput } = await execPromise(`docker images --format "{{.ID}}" ${imageName}`);
+        const newHash = newOutput.trim();
+
+        // ハッシュを比較
+        const updated = !localHash || localHash !== newHash;
+        
+        console.log(`[DEBUG] イメージ更新確認: ${imageName}`);
+        console.log(`[DEBUG] 古いハッシュ: ${localHash || 'なし'}`);
+        console.log(`[DEBUG] 新しいハッシュ: ${newHash}`);
+        console.log(`[DEBUG] 更新あり: ${updated}`);
+
+        return {
+            updated,
+            localHash,
+            newHash
+        };
+    } catch (error) {
+        throw new Error(`イメージ更新確認に失敗しました: ${parseErrorMessage(error)}`);
+    }
+}
+
+/**
+ * イメージ更新時のコンテナリビルド確認
+ * @param imageName イメージ名
+ * @returns ユーザーがリビルドを選択した場合はtrue
+ */
+export async function confirmContainerRebuild(imageName: string): Promise<boolean> {
+    const decision = await vscode.window.showInformationMessage(
+        `Dockerイメージ "${imageName}" が更新されました。既存のコンテナを削除して新しいイメージでリビルドしますか？`,
+        { modal: true },
+        {
+            title: 'リビルドする',
+            action: 'rebuild'
+        },
+        {
+            title: '後で決める',
+            action: 'later'
+        }
+    );
+
+    return decision?.action === 'rebuild';
+}
+
+/**
  * 事前準備を行う
  * @returns 成功した場合はsettings.jsonのパス、失敗した場合はundefined
  */
@@ -248,11 +322,40 @@ export async function preparation(context: vscode.ExtensionContext): Promise<str
             }
         }
         
-        // DockerイメージのPull
+        // DockerイメージのPullと更新確認
         const settings = JSON.parse(fs.readFileSync(settingfilePath, 'utf8'));
         const dockerImage = settings.containerImage || DOCKER_CONFIG.DOCKER_IMAGE;
-        if (!await dockerPullImage(dockerImage)) {
-            return;
+        
+        // イメージ更新確認
+        const updateInfo = await checkDockerImageUpdate(dockerImage);
+        
+        if (updateInfo.updated) {
+            if (updateInfo.localHash) {
+                vscode.window.showInformationMessage(`[bioinfo-launcher] Dockerイメージが更新されました（${dockerImage}）\n旧バージョン: ${updateInfo.localHash.substring(0, 12)}\n新バージョン: ${updateInfo.newHash?.substring(0, 12)}`);
+            } else {
+                vscode.window.showInformationMessage(`[bioinfo-launcher] 新しいDockerイメージをダウンロードしました（${dockerImage}）`);
+            }
+            
+            // 既存のコンテナディレクトリが存在する場合のみリビルド確認
+            if (settings.parentDirPath && await fsValidateParentDirectory(settings.parentDirPath)) {
+                const shouldRebuild = await confirmContainerRebuild(dockerImage);
+                
+                if (shouldRebuild) {
+                    // 既存コンテナを削除
+                    await dockerRemoveContainers(DOCKER_CONFIG.CONTAINER_NAME_FILTERS);
+                    vscode.window.showInformationMessage('[bioinfo-launcher] 既存のコンテナを削除しました。新しいイメージでコンテナが再作成されます。');
+                    
+                    // 更新情報をグローバルstateに保存（後でsetup完了時に通知に使用）
+                    context.globalState.update('imageUpdated', true);
+                } else {
+                    vscode.window.showInformationMessage('[bioinfo-launcher] イメージは更新されましたが、既存のコンテナはそのままです。次回VSCodeでコンテナを開いたときに、リビルドを提案される場合があります。');
+                }
+            } else {
+                // 新規セットアップの場合
+                context.globalState.update('imageUpdated', true);
+            }
+        } else {
+            vscode.window.showInformationMessage(`[bioinfo-launcher] Dockerイメージは最新です（${dockerImage}）`);
         }
 
         return settingfilePath;
@@ -438,6 +541,12 @@ export async function setup(context: vscode.ExtensionContext, settings: any ,set
             settings.parentDirPath = parentDirPath;
             fs.writeFileSync(settingfilePath, JSON.stringify(settings, null, 2));
             vscode.window.showInformationMessage("[bioinfo-launcher] 親ディレクトリのパスを設定に保存しました");
+        }
+        
+        // イメージ更新による新規セットアップの場合の通知
+        const imageUpdated = context.globalState.get('imageUpdated', false);
+        if (imageUpdated) {
+            vscode.window.showInformationMessage('[bioinfo-launcher] セットアップが完了しました。新しいDockerイメージが使用されます。');
         }
         
         return containerDirPath;
@@ -828,7 +937,9 @@ export const EXPORTED_FUNCTIONS = {
     startLauncher,
     resetLauncherConfig,
     checkDockerPermissions: dockerCheckPermissions,
-    preflightChecks: dockerPreflightChecks
+    preflightChecks: dockerPreflightChecks,
+    checkDockerImageUpdate,
+    confirmContainerRebuild
 };
 
 // commonjs用にエクスポート
@@ -845,5 +956,7 @@ module.exports = {
     setupFolderPermissions: fsSetupFolderPermissions,
     isDockerInstalled: dockerIsInstalled,
     checkDockerPermissions: dockerCheckPermissions,
-    preflightChecks: dockerPreflightChecks
+    preflightChecks: dockerPreflightChecks,
+    checkDockerImageUpdate,
+    confirmContainerRebuild
 };
