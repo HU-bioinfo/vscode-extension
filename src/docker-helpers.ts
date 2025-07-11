@@ -197,15 +197,42 @@ export async function checkDockerPermissions(): Promise<boolean> {
  */
 export async function openFolderInContainer(folderPath: string): Promise<void> {
     try {
-        // 直接devcontainerでフォルダを開く
+        // Dev Containersの正しいコマンドとパラメータ形式を使用
+        // remote-containers.openFolderは第二引数にオプションオブジェクトを期待する
         await vscode.commands.executeCommand(
             "remote-containers.openFolder", 
-            vscode.Uri.file(folderPath)
+            vscode.Uri.file(folderPath),
+            {} // 空のオプションオブジェクトを渡す
         );
         
         vscode.window.showInformationMessage("[bioinfo-launcher] コンテナで開発環境を起動しました");
     } catch (error) {
-        vscode.window.showErrorMessage(`[bioinfo-launcher] コンテナでフォルダを開くことができませんでした: ${parseErrorMessage(error)}`);
+        // エラーが発生した場合は、代替コマンドを試す
+        try {
+            // 現在のワークスペースがfolderPathと同じ場合は、reopenInContainerを使用
+            const workspaceFolders = vscode.workspace.workspaceFolders;
+            if (workspaceFolders && workspaceFolders[0].uri.fsPath === folderPath) {
+                await vscode.commands.executeCommand("remote-containers.reopenInContainer");
+                vscode.window.showInformationMessage("[bioinfo-launcher] コンテナで開発環境を起動しました");
+                return;
+            }
+            
+            // 別の方法: forceNewWindowオプションを使用
+            await vscode.commands.executeCommand(
+                "remote-containers.openFolder",
+                vscode.Uri.file(folderPath),
+                { forceNewWindow: false }
+            );
+            
+            vscode.window.showInformationMessage("[bioinfo-launcher] コンテナで開発環境を起動しました");
+        } catch (secondError) {
+            vscode.window.showErrorMessage(`[bioinfo-launcher] コンテナでフォルダを開くことができませんでした: ${parseErrorMessage(error)}`);
+            // デバッグ情報を出力チャンネルに表示
+            const outputChannel = vscode.window.createOutputChannel("bioinfo-launcher");
+            outputChannel.appendLine(`Error details: ${JSON.stringify(error)}`);
+            outputChannel.appendLine(`Second error details: ${JSON.stringify(secondError)}`);
+            outputChannel.show();
+        }
     }
 }
 
