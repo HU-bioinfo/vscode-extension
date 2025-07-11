@@ -2,6 +2,11 @@
 
 All notable changes to the "bioinfo-launcher" extension will be documented in this file.
 
+## [1.4.7] - 2025-07-11
+
+### Changed
+- バージョンを1.4.7に更新
+
 ## [1.4.6] - 2025-07-11
 
 ### Released
