@@ -32,10 +32,17 @@ import {
     isDockerInstalled as dockerIsInstalled,
     checkDockerPermissions as dockerCheckPermissions,
     openFolderInContainer as dockerOpenInContainer,
-    executeDockerCommand as dockerExecuteCommand
+    executeDockerCommand as dockerExecuteCommand,
+    disposeOutputChannel
 } from './docker-helpers';
 
 const execPromise = promisify(exec);
+
+// Settingsオブジェクトの型定義
+interface ExtensionSettings {
+    containerImage?: string;
+    parentDirPath?: string;
+}
 
 /**
  * エクステンションアクティベーション時の処理
@@ -49,7 +56,7 @@ export function activate(context: vscode.ExtensionContext) {
             if (!settingfilePath) {
                 return;
             }
-            const settings = JSON.parse(fs.readFileSync(settingfilePath, 'utf8'));
+            const settings: ExtensionSettings = JSON.parse(fs.readFileSync(settingfilePath, 'utf8'));
             const dockerImageToUse = settings.containerImage || DOCKER_CONFIG.DOCKER_IMAGE;
 
             let containerDirPath: string | undefined;
@@ -68,7 +75,7 @@ export function activate(context: vscode.ExtensionContext) {
             }
             
            // コンテナディレクトリをVSCodeで開く
-            dockerOpenInContainer(containerDirPath);
+            await dockerOpenInContainer(containerDirPath);
             
             // イメージ更新によるリビルドが行われた場合の通知
             const imageUpdated = context.globalState.get('imageUpdated', false);
@@ -93,7 +100,7 @@ export function activate(context: vscode.ExtensionContext) {
             if (!settingfilePath) {
                 return;
             }
-            const settings = JSON.parse(fs.readFileSync(settingfilePath, 'utf8'));
+            const settings: ExtensionSettings = JSON.parse(fs.readFileSync(settingfilePath, 'utf8'));
             const dockerImageToUse = settings.containerImage || DOCKER_CONFIG.DOCKER_IMAGE;
             
             let containerDirPath: string | undefined;
@@ -109,7 +116,7 @@ export function activate(context: vscode.ExtensionContext) {
             await dockerRemoveContainers(DOCKER_CONFIG.CONTAINER_NAME_FILTERS);
 
             // コンテナディレクトリをVSCodeで開く
-            dockerOpenInContainer(containerDirPath);
+            await dockerOpenInContainer(containerDirPath);
         } catch (error) {
             const errorMessage = parseErrorMessage(error);
             if (isDockerError(error)) {
@@ -132,7 +139,7 @@ export function activate(context: vscode.ExtensionContext) {
             }
             
             // 現在の設定を読み込む
-            const settings = JSON.parse(fs.readFileSync(settingfilePath, 'utf8'));
+            const settings: ExtensionSettings = JSON.parse(fs.readFileSync(settingfilePath, 'utf8'));
             
             // 利用可能なイメージのリストを表示
             const selectedImage = await vscode.window.showQuickPick(
@@ -245,14 +252,30 @@ export async function checkDockerImageUpdate(imageName: string): Promise<{update
         }
 
         // リモートイメージをpull（docker-helpers.tsの進捗付きpull関数を使用）
-        const pullSuccess = await dockerPullImage(imageName);
+        let pullSuccess = false;
+        try {
+            pullSuccess = await dockerPullImage(imageName);
+        } catch (pullError) {
+            // pullエラーの詳細をログに記録
+            console.error(`[ERROR] Docker pull failed for ${imageName}:`, pullError);
+            throw new Error(`イメージのpullに失敗しました: ${parseErrorMessage(pullError)}`);
+        }
+        
         if (!pullSuccess) {
             throw new Error('イメージのpullに失敗しました');
         }
 
         // pull後のローカルイメージのハッシュを取得
-        const { stdout: newOutput } = await execPromise(`docker images --format "{{.ID}}" ${imageName}`);
-        const newHash = newOutput.trim();
+        let newHash: string;
+        try {
+            const { stdout: newOutput } = await execPromise(`docker images --format "{{.ID}}" ${imageName}`);
+            newHash = newOutput.trim();
+            if (!newHash) {
+                throw new Error('イメージハッシュの取得に失敗しました');
+            }
+        } catch (error) {
+            throw new Error(`pull後のイメージハッシュ取得に失敗: ${parseErrorMessage(error)}`);
+        }
 
         // ハッシュを比較
         const updated = !localHash || localHash !== newHash;
@@ -268,6 +291,10 @@ export async function checkDockerImageUpdate(imageName: string): Promise<{update
             newHash
         };
     } catch (error) {
+        // エラーがすでにErrorオブジェクトの場合はそのままスロー
+        if (error instanceof Error) {
+            throw error;
+        }
         throw new Error(`イメージ更新確認に失敗しました: ${parseErrorMessage(error)}`);
     }
 }
@@ -314,7 +341,7 @@ export async function preparation(context: vscode.ExtensionContext): Promise<str
             fs.writeFileSync(settingfilePath, JSON.stringify({ containerImage: DOCKER_CONFIG.DOCKER_IMAGE }));
         } else {
             // settings.jsonが存在する場合は、コンテナイメージ設定を読み込む
-            const settings = JSON.parse(fs.readFileSync(settingfilePath, 'utf8'));
+            const settings: ExtensionSettings = JSON.parse(fs.readFileSync(settingfilePath, 'utf8'));
             // containerImageが設定されていない場合はデフォルト値を設定
             if (!settings.containerImage) {
                 settings.containerImage = DOCKER_CONFIG.DOCKER_IMAGE;
@@ -366,117 +393,11 @@ export async function preparation(context: vscode.ExtensionContext): Promise<str
     }
 }
 
-/**
- * 親ディレクトリの有効性を確認する
- * @param parentDirPath 親ディレクトリのパス
- * @returns 有効な場合はtrue、無効な場合はfalse
- */
-async function validateParentDirectory(parentDirPath: string): Promise<boolean> {
-    if (!fs.existsSync(parentDirPath)) {
-        return false;
-    }
-    
-    const containerDirPath = path.join(parentDirPath, "container");
-    const devcontainerDirPath = path.join(containerDirPath, ".devcontainer");
-    if (!fs.existsSync(devcontainerDirPath)) {
-        return false;
-    }
-    
-    if (!fs.existsSync(path.join(devcontainerDirPath, "docker-compose.yml"))) {
-        return false;
-    }
-    if (!fs.existsSync(path.join(devcontainerDirPath, "devcontainer.json"))) {
-        return false;
-    }
-    return true;
-}
-
-/**
- * 事前チェック（Docker、権限）
- * @returns 全てのチェックが通った場合はtrue
- */
-export async function preflightChecks(): Promise<boolean> {
-    // Dockerがインストールされているか確認
-    if (!await isDockerInstalled()) {
-        // Docker未インストールの場合、インストールを提案
-        showDockerNotInstalledError(); // ui-helpersからインポート
-        return false;
-    }
-
-    // Dockerの権限を確認
-    if (!await checkDockerPermissions()) {
-        showDockerPermissionError(); // ui-helpersからインポート
-        return false;
-    }
-    
-    return true;
-}
-
-/**
- * Dockerイメージをプルする
- * @param imageName プルするイメージ名
- * @returns 成功した場合はtrue
- */
-export async function pullDockerImage(imageName: string): Promise<boolean> {
-    try {
-        vscode.window.showInformationMessage(`[bioinfo-launcher] Dockerイメージ ${imageName} を取得中...`);
-        await execPromise(`docker pull ${imageName}`);
-        return true;
-    } catch (error) {
-        handleDockerError(error);
-        return false;
-    }
-}
-
-/**
- * 既存のコンテナを削除する
- * @param nameFilters コンテナ名フィルタ
- * @returns 成功した場合はtrue
- */
-export async function removeExistingContainers(nameFilters: string[]): Promise<boolean> {
-    try {
-        // フィルタ文字列の作成
-        const filterStr = nameFilters.map(name => `--filter 'name=${name}'`).join(' ');
-        await execPromise(`docker rm -f $(docker ps -aq ${filterStr})`);
-        return true;
-    } catch (error) {
-        // コンテナが存在しない場合はエラーが出るが無視して続行
-        return true;
-    }
-}
-
-// Dockerがインストールされているかを確認する関数
-export async function isDockerInstalled(): Promise<boolean> {
-    try {
-        await execPromise('docker --version');
-        return true;
-    } catch (error) {
-        return false;
-    }
-}
-
-// showDockerNotInstalledError は ui-helpers.ts に移動
-
-// Dockerの権限を確認する関数
-export async function checkDockerPermissions(): Promise<boolean> {
-    try {
-        await execPromise('docker info');
-        return true;
-    } catch (error) {
-        // エラーメッセージに権限関連の文字列が含まれているか確認
-        const errorMessage = error ? (error as Error).toString().toLowerCase() : '';
-        if (errorMessage.includes('permission') || errorMessage.includes('denied') || errorMessage.includes('access')) {
-            return false;
-        }
-        // 他のエラーの場合はDockerの問題ではない可能性があるため、インストールされていない扱いにする
-        return false;
-    }
-}
-
-// showDockerPermissionError は ui-helpers.ts に移動
-
 // This method is called when your extension is deactivated
-export function deactivate() {}
+export function deactivate() {
+    // 出力チャンネルをクリーンアップ
+    disposeOutputChannel();
+}
 
 /**
  * リソースファイルのURIを取得する
@@ -489,7 +410,7 @@ export function getResourceUri(context: vscode.ExtensionContext, relativePath: s
 }
 
 // 全てのセットアップを行う関数
-export async function setup(context: vscode.ExtensionContext, settings: any ,settingfilePath: string, dockerImageFromSettings?: string): Promise<string|undefined> {
+export async function setup(context: vscode.ExtensionContext, settings: ExtensionSettings ,settingfilePath: string, dockerImageFromSettings?: string): Promise<string|undefined> {
     try {
         // 親ディレクトリの選択
         const parentDirUri = await selectParentDirectory();
@@ -750,7 +671,7 @@ export async function startLauncher(): Promise<void> {
         
         if (fs.existsSync(settingfilePath)) {
             try {
-                const settings = JSON.parse(fs.readFileSync(settingfilePath, 'utf8'));
+                const settings: ExtensionSettings = JSON.parse(fs.readFileSync(settingfilePath, 'utf8'));
                 if (settings.containerImage) {
                     dockerImage = settings.containerImage;
                 }
@@ -841,7 +762,7 @@ export async function resetLauncherConfig(): Promise<void> {
         
         if (fs.existsSync(settingfilePath)) {
             try {
-                const settings = JSON.parse(fs.readFileSync(settingfilePath, 'utf8'));
+                const settings: ExtensionSettings = JSON.parse(fs.readFileSync(settingfilePath, 'utf8'));
                 if (settings.containerImage) {
                     dockerImage = settings.containerImage;
                     console.log(`[DEBUG] resetLauncherConfig: settings.jsonから読み込んだdockerImage=${dockerImage}`);

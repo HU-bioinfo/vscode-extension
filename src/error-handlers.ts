@@ -1,7 +1,16 @@
 // テスト環境でない場合のみ実際のVSCodeをインポート
-let vscode: any;
+import type * as vscodeTypes from 'vscode';
+
+interface VSCodeMock {
+    window: {
+        showInformationMessage: (message: string, ...items: string[]) => Thenable<string | undefined>;
+        showErrorMessage: (message: string, ...items: string[]) => Thenable<string | undefined>;
+    };
+}
+
+let vscode: typeof vscodeTypes | VSCodeMock;
 if (process.env.NODE_ENV !== 'test') {
-    vscode = require('vscode');
+    vscode = require('vscode') as typeof vscodeTypes;
 } else {
     // テスト環境では、モックを使用
     vscode = {
@@ -9,12 +18,12 @@ if (process.env.NODE_ENV !== 'test') {
             showInformationMessage: () => Promise.resolve(undefined),
             showErrorMessage: () => Promise.resolve(undefined)
         }
-    };
+    } as VSCodeMock;
 }
 
 // テスト環境用のエクスポート (テスト時にモックと入れ替えるため)
 export const _test = {
-    setVSCodeMock: (mock: any) => {
+    setVSCodeMock: (mock: VSCodeMock) => {
         if (process.env.NODE_ENV === 'test') {
             vscode = mock;
         }
@@ -26,7 +35,7 @@ export const _test = {
  * @param error エラーオブジェクトまたは文字列
  * @returns 表示用のエラーメッセージ
  */
-export function parseErrorMessage(error: any): string {
+export function parseErrorMessage(error: unknown): string {
     if (error === undefined || error === null) {
         return '不明なエラー';
     }
@@ -41,11 +50,12 @@ export function parseErrorMessage(error: any): string {
     }
     
     // オブジェクトでmessageプロパティを持つ場合
-    if (error.message) {
-        if (error.details) {
-            return `${error.message}: ${error.details}`;
+    if (typeof error === 'object' && error !== null && 'message' in error) {
+        const err = error as { message: string; details?: string };
+        if ('details' in err && err.details) {
+            return `${err.message}: ${err.details}`;
         }
-        return error.message;
+        return err.message;
     }
     
     // それ以外はJSONに変換して表示
@@ -61,7 +71,7 @@ export function parseErrorMessage(error: any): string {
  * @param error エラーオブジェクト
  * @returns Dockerエラーの場合はtrue
  */
-export function isDockerError(error: any): boolean {
+export function isDockerError(error: unknown): boolean {
     const message = parseErrorMessage(error).toLowerCase();
     return message.includes('docker') || 
         message.includes('daemon') || 
@@ -73,7 +83,7 @@ export function isDockerError(error: any): boolean {
  * Dockerエラーを処理する
  * @param error Dockerエラー
  */
-export function handleDockerError(error: any): void {
+export function handleDockerError(error: unknown): void {
     const message = parseErrorMessage(error).toLowerCase();
     
     if (message.includes('not installed') || message.includes('command not found')) {
@@ -108,7 +118,7 @@ export function validateInput(value: string | null | undefined): string | null {
  * Docker Compose関連のエラーを処理する
  * @param error Docker Composeエラー
  */
-export function handleDockerComposeError(error: any): void {
+export function handleDockerComposeError(error: unknown): void {
     const message = parseErrorMessage(error).toLowerCase();
     
     if (message.includes('version not found')) {
@@ -124,7 +134,7 @@ export function handleDockerComposeError(error: any): void {
  * ファイルシステム関連のエラーを処理する
  * @param error ファイルシステムエラー
  */
-export function handleFileSystemError(error: any): void {
+export function handleFileSystemError(error: unknown): void {
     const message = parseErrorMessage(error).toLowerCase();
     
     if (message.includes('permission denied')) {
@@ -142,7 +152,7 @@ export function handleFileSystemError(error: any): void {
  * ネットワーク関連のエラーを処理する
  * @param error ネットワークエラー
  */
-export function handleNetworkError(error: any): void {
+export function handleNetworkError(error: unknown): void {
     const message = parseErrorMessage(error).toLowerCase();
     
     if (message.includes('timeout') || message.includes('timed out')) {

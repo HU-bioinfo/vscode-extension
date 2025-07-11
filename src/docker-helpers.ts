@@ -182,7 +182,7 @@ export async function checkDockerPermissions(): Promise<boolean> {
         return true;
     } catch (error) {
         // エラーメッセージに権限関連の文字列が含まれているか確認
-        const errorMessage = error ? (error as Error).toString().toLowerCase() : '';
+        const errorMessage = error ? (error instanceof Error ? error.toString() : String(error)).toLowerCase() : '';
         if (errorMessage.includes('permission') || errorMessage.includes('denied') || errorMessage.includes('access')) {
             return false;
         }
@@ -195,6 +195,23 @@ export async function checkDockerPermissions(): Promise<boolean> {
  * コンテナでフォルダを開く関数
  * @param folderPath 開くフォルダのパス
  */
+// 出力チャンネルをグローバルで管理
+let outputChannel: vscode.OutputChannel | undefined;
+
+function getOutputChannel(): vscode.OutputChannel {
+    if (!outputChannel) {
+        outputChannel = vscode.window.createOutputChannel("bioinfo-launcher");
+    }
+    return outputChannel;
+}
+
+export function disposeOutputChannel(): void {
+    if (outputChannel) {
+        outputChannel.dispose();
+        outputChannel = undefined;
+    }
+}
+
 export async function openFolderInContainer(folderPath: string): Promise<void> {
     try {
         // Dev Containersの正しいコマンドとパラメータ形式を使用
@@ -228,10 +245,10 @@ export async function openFolderInContainer(folderPath: string): Promise<void> {
         } catch (secondError) {
             vscode.window.showErrorMessage(`[bioinfo-launcher] コンテナでフォルダを開くことができませんでした: ${parseErrorMessage(error)}`);
             // デバッグ情報を出力チャンネルに表示
-            const outputChannel = vscode.window.createOutputChannel("bioinfo-launcher");
-            outputChannel.appendLine(`Error details: ${JSON.stringify(error)}`);
-            outputChannel.appendLine(`Second error details: ${JSON.stringify(secondError)}`);
-            outputChannel.show();
+            const channel = getOutputChannel();
+            channel.appendLine(`Error details: ${JSON.stringify(error)}`);
+            channel.appendLine(`Second error details: ${JSON.stringify(secondError)}`);
+            channel.show();
         }
     }
 }

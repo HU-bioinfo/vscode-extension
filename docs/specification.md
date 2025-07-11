@@ -186,6 +186,38 @@ services:
 - テンプレートファイル名から`_template`や`.template`拡張子が取り除かれる
 - ユーザーが選択した親ディレクトリに、適切なサブディレクトリ構造を保ちながら配置される
 
+## 技術的改善点（v1.4.5）
+
+### コード品質の改善
+
+1. **型安全性の向上**:
+   - error-handlers.ts のすべての `any` 型を `unknown` 型に変更
+   - ExtensionSettings インターフェースを定義して設定オブジェクトの型安全性を確保
+   - VSCode API の型定義を適切にインポート
+
+2. **非同期処理の修正**:
+   - `dockerOpenInContainer` 関数の呼び出しに await を追加
+   - 適切なエラー伝播を確保
+
+3. **エラーハンドリングの強化**:
+   - `checkDockerImageUpdate` 関数に詳細なエラー処理を追加
+   - Docker pull エラーの詳細ログ記録
+   - Error オブジェクトの適切なハンドリング
+
+4. **リソース管理の改善**:
+   - 出力チャンネルをグローバルで管理
+   - deactivate 時に適切に dispose 処理
+
+5. **コード重複の除去**:
+   - extension.ts から重複していた以下の関数を削除：
+     - `validateParentDirectory`
+     - `preflightChecks`
+     - `pullDockerImage`
+     - `removeExistingContainers`
+     - `isDockerInstalled`
+     - `checkDockerPermissions`
+   - それぞれ対応するモジュールからインポートして使用
+
 ## 展望と改善点
 
 1. **Windows ネイティブサポートの検討**: 現在は WSL 経由での利用に限定、将来的にはネイティブ対応も検討

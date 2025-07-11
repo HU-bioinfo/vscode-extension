@@ -2,6 +2,36 @@
 
 All notable changes to the "bioinfo-launcher" extension will be documented in this file.
 
+## [1.4.5] - 2025-07-11
+
+### Fixed
+- Dev Containers API のコマンドパラメータエラーを修正
+  - `remote-containers.openFolder` コマンドに必要な第二引数（オプションオブジェクト）を追加
+  - エラー時の代替処理として `reopenInContainer` コマンドを実装
+  - デバッグ情報を出力チャンネルに表示する機能を追加
+
+### Changed
+- **非同期処理の改善**: `dockerOpenInContainer` の呼び出しに await を追加
+- **型安全性の向上**:
+  - error-handlers.ts の any 型を unknown 型に変更
+  - ExtensionSettings インターフェースを定義して settings オブジェクトの型安全性を改善
+  - VSCode API の型定義を適切にインポート
+- **エラーハンドリングの強化**: `checkDockerImageUpdate` 関数に詳細なエラー処理を追加
+- **リソース管理の改善**: 出力チャンネルの適切な dispose 処理を追加
+
+### Refactored
+- **コード重複の除去**: extension.ts から重複していた以下の関数を削除
+  - `validateParentDirectory` (fs-helpers.ts のものを使用)
+  - `preflightChecks` (docker-helpers.ts のものを使用)
+  - `pullDockerImage` (docker-helpers.ts のものを使用)
+  - `removeExistingContainers` (docker-helpers.ts のものを使用)
+  - `isDockerInstalled` (docker-helpers.ts のものを使用)
+  - `checkDockerPermissions` (docker-helpers.ts のものを使用)
+
+### Documentation
+- CLAUDE.md に CHANGELOG 管理ルールを追加
+- 仕様書と実装の整合性を更新
+
 ## [1.4.2] - 2025-06-06
 
 ### Added
