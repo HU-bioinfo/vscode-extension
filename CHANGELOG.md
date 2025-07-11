@@ -8,6 +8,10 @@ All notable changes to the "bioinfo-launcher" extension will be documented in th
 - v1.4.5 の全変更をまとめて公式リリース
 - VSIXパッケージの作成と配布準備完了
 
+### Fixed
+- ビルド問題を修正（tsconfig.json の module を commonjs に変更、esModuleInterop を有効化）
+- VSIXパッケージに正しいコンパイル済みファイルが含まれるよう修正
+
 ## [1.4.5] - 2025-07-11 (Development)
 
 ### Fixed
