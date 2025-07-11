@@ -2,7 +2,13 @@
 
 All notable changes to the "bioinfo-launcher" extension will be documented in this file.
 
-## [1.4.5] - 2025-07-11
+## [1.4.6] - 2025-07-11
+
+### Released
+- v1.4.5 の全変更をまとめて公式リリース
+- VSIXパッケージの作成と配布準備完了
+
+## [1.4.5] - 2025-07-11 (Development)
 
 ### Fixed
 - Dev Containers API のコマンドパラメータエラーを修正
