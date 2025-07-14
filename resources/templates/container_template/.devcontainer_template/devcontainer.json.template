@@ -1,5 +1,5 @@
 {
-    "name": "bioinfo-launcher",
+    "name": "dev-hubioinfows-full-container",
     "dockerComposeFile": "./docker-compose.yml",
     "service": "container",
     "workspaceFolder": "/home/user/proj",
@@ -19,7 +19,7 @@
                 "anthropic.claude-code"
             ],
             "settings": {
-                "r.rterm.linux": "/usr/local/bin/radian",
+                "r.rterm.linux": "/home/user/.local/bin/radian",
                 "r.rterm.option": [
                   "--no-save",
                   "--no-restore"

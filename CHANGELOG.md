@@ -2,6 +2,11 @@
 
 All notable changes to the "bioinfo-launcher" extension will be documented in this file.
 
+## [1.4.8] - 2025-07-14
+
+### Changed
+- devcontainer.json テンプレートを更新
+
 ## [1.4.7] - 2025-07-11
 
 ### Changed
