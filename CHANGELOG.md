@@ -2,6 +2,30 @@
 
 All notable changes to the "bioinfo-launcher" extension will be documented in this file.
 
+## [1.4.9] - 2025-07-15
+
+### Added
+- テンプレート自動更新機能を追加
+  - エクステンション更新時に.devcontainer設定が最新版に自動更新されるように
+  - start-launcherやreset-config実行時に最新テンプレートで上書き
+
+### Changed
+- setupDevContainer関数を改善
+  - 既存の.devcontainer設定を常に最新テンプレートで更新
+  - 更新時にユーザーへの通知メッセージを追加
+- setupProjectTemplate関数を改善
+  - ユーザーデータ保護のため、既存ファイルがある場合はスキップ
+
+### Documentation
+- 仕様書を機能別に分割（約300行→各50-100行の複数ファイル）
+  - specification-overview.md - 概要とアーキテクチャ
+  - specification-commands.md - コマンド仕様
+  - specification-docker.md - Docker関連仕様
+  - specification-error-handling.md - エラー処理仕様
+  - specification-templates.md - テンプレート仕様
+- 二回目実行時の動作を仕様書に明記
+- テンプレート更新時の動作を文書化
+
 ## [1.4.8] - 2025-07-14
 
 ### Changed

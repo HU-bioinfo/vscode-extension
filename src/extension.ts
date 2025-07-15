@@ -489,6 +489,10 @@ export async function setupDevContainer(context: vscode.ExtensionContext, target
             fs.mkdirSync(targetPath, { recursive: true ,  mode: 0o777 });
         }
         
+        // 既存の.devcontainerディレクトリがある場合は、エクステンション更新を反映するため
+        // 設定ファイルを常に最新のテンプレートで上書きする
+        const isUpdate = fs.existsSync(path.join(targetPath, 'devcontainer.json'));
+        
         // テンプレートディレクトリのパスを取得
         const devcontainerTemplateUri = getResourceUri(context, 'templates/container_template/.devcontainer_template');
         
@@ -499,14 +503,18 @@ export async function setupDevContainer(context: vscode.ExtensionContext, target
             CACHE_FOLDER: cacheDirPath
         };
         
-        // テンプレートを展開
+        // テンプレートを展開（常に上書き）
         await templateProcessor.expandTemplateDirectory(
             devcontainerTemplateUri.fsPath,
             targetPath,
             variables
         );
         
-        vscode.window.showInformationMessage("[bioinfo-launcher] devcontainer設定を作成しました");
+        if (isUpdate) {
+            vscode.window.showInformationMessage("[bioinfo-launcher] devcontainer設定を最新版に更新しました");
+        } else {
+            vscode.window.showInformationMessage("[bioinfo-launcher] devcontainer設定を作成しました");
+        }
     } catch (error) {
         handleFileSystemError(error);
         vscode.window.showErrorMessage(`[bioinfo-launcher] devcontainer設定の作成中にエラーが発生しました: ${parseErrorMessage(error)}`);
@@ -585,10 +593,18 @@ export async function setupProjectTemplate(context: vscode.ExtensionContext, pro
             fs.mkdirSync(projectFolder, { recursive: true ,  mode: 0o777 });
         }
         
+        // プロジェクトディレクトリが既に存在し、ファイルが含まれている場合は
+        // ユーザーデータを保護するためテンプレート展開をスキップ
+        const projectFiles = fs.readdirSync(projectFolder);
+        if (projectFiles.length > 0) {
+            console.log("[bioinfo-launcher] プロジェクトディレクトリに既存ファイルがあるため、テンプレート展開をスキップします");
+            return true;
+        }
+        
         // 変数定義（必要に応じて）
         const variables: Record<string, string> = {};
         
-        // テンプレートを展開
+        // テンプレートを展開（初回のみ）
         await templateProcessor.expandTemplateDirectory(
             projectsTemplateUri.fsPath,
             projectFolder,
