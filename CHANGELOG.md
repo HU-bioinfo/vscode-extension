@@ -2,6 +2,22 @@
 
 All notable changes to the "bioinfo-launcher" extension will be documented in this file.
 
+## [1.4.10] - 2025-07-15
+
+### Fixed
+- GitHub PATが二回目以降の実行時に消える問題を修正
+  - 既存のdocker-compose.ymlからGitHub PATを抽出して保持
+  - テンプレート更新時もPATを維持するように改善
+
+### Added
+- extractGitHubPATFromDockerCompose関数を追加
+  - 既存設定からGitHub PATを安全に抽出
+
+### Changed
+- 二回目以降の実行時の処理を改善
+  - 既存環境でもテンプレート更新を適用
+  - GitHub PATを保持しながら設定を更新
+
 ## [1.4.9] - 2025-07-15
 
 ### Added

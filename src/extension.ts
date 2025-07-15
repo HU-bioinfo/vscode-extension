@@ -72,6 +72,33 @@ export function activate(context: vscode.ExtensionContext) {
                 const parentDirUri = vscode.Uri.file(settings.parentDirPath);
                 const parentDirPath = parentDirUri.fsPath;
                 containerDirPath = path.join(parentDirPath, "container");
+                
+                // 二回目以降の実行時もテンプレートを更新（GitHub PATは保持）
+                const containerDevcontainerPath = path.join(containerDirPath, ".devcontainer");
+                const dockerComposeFilePath = path.join(containerDevcontainerPath, "docker-compose.yml");
+                
+                // 既存のGitHub PATを抽出
+                const existingPAT = extractGitHubPATFromDockerCompose(dockerComposeFilePath);
+                
+                // .devcontainer設定を最新テンプレートで更新
+                const cacheDirPath = path.join(parentDirPath, "cache");
+                const projectsDirPath = path.join(containerDirPath, "projects");
+                await setupDevContainer(context, containerDevcontainerPath, cacheDirPath, projectsDirPath);
+                
+                // GitHub PATを保持しながらdocker-compose.ymlを再生成
+                if (existingPAT) {
+                    await generateDockerCompose(
+                        context,
+                        dockerComposeFilePath,
+                        {
+                            projectFolder: projectsDirPath,
+                            cacheFolder: cacheDirPath,
+                            githubPat: existingPAT,
+                            dockerImage: dockerImageToUse
+                        }
+                    );
+                    console.log('[bioinfo-launcher] 既存のGitHub PATを保持しながら設定を更新しました');
+                }
             }
             
            // コンテナディレクトリをVSCodeで開く
@@ -523,6 +550,29 @@ export async function setupDevContainer(context: vscode.ExtensionContext, target
 }
 
 // openFolderInContainer は docker-helpers.ts に移動
+
+// 既存のdocker-compose.ymlからGitHub PATを抽出する関数
+function extractGitHubPATFromDockerCompose(dockerComposeFilePath: string): string | null {
+    try {
+        if (!fs.existsSync(dockerComposeFilePath)) {
+            return null;
+        }
+        
+        const content = fs.readFileSync(dockerComposeFilePath, 'utf8');
+        // GITHUB_PAT=値 の形式を探す
+        const patMatch = content.match(/GITHUB_PAT=([^\s\n"']+)/);
+        
+        if (patMatch && patMatch[1]) {
+            console.log(`[DEBUG] 既存のGITHUB_PATを検出: ${patMatch[1].substring(0, 4)}...`);
+            return patMatch[1];
+        }
+        
+        return null;
+    } catch (error) {
+        console.error('[ERROR] docker-compose.ymlの読み取りに失敗:', error);
+        return null;
+    }
+}
 
 // Docker Composeファイルを生成する関数
 export async function generateDockerCompose(context: vscode.ExtensionContext, dockercomposeFilePath: string, config: {projectFolder: string, cacheFolder: string, githubPat: string, dockerImage?: string}): Promise<boolean> {
